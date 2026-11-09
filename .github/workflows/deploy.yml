@@ -1,0 +1,98 @@
+name: CI/CD Pipeline - Validar y Desplegar Wesbyte Portal en Contabo VPS
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  validate:
+    name: Validar Código, Lógica de Planes y Build Docker
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validación de sintaxis Python
+        run: |
+          python -m compileall app/ main.py
+          echo "Compilación exitosa: Sin errores de sintaxis en el código."
+
+      - name: Validación de lógica de negocio (Planes, Calculadora, Normalización Dataset y PayPhone)
+        run: |
+          python -c "
+          from app.config import PLANES_OFICIALES, calcular_plan_personalizado
+          from app.database import normalize_dataset_name
+          from app.services.payphone_service import build_payphone_box_config
+
+          assert len(PLANES_OFICIALES) == 3, 'Deben existir los 3 planes comerciales'
+          assert PLANES_OFICIALES[0]['precio_anual'] == 240.00 and PLANES_OFICIALES[0]['precio_anual_con_descuento'] == 216.00
+          assert PLANES_OFICIALES[1]['precio_anual'] == 360.00 and PLANES_OFICIALES[1]['precio_anual_con_descuento'] == 324.00
+          assert PLANES_OFICIALES[2]['precio_anual'] == 540.00 and PLANES_OFICIALES[2]['precio_anual_con_descuento'] == 486.00
+
+          ds_name = normalize_dataset_name('Seguros Águila & Cía. S.A.')
+          assert ds_name == 'segurosaguilaciasa', f'Dataset inesperado: {ds_name}'
+
+          calc = calcular_plan_personalizado(5, 300, 200, 400)
+          assert calc['precio_anual_con_descuento'] == 486.00
+
+          pp_cfg = build_payphone_box_config('WB1AN12345', 216.00, 'Plan Prime', 'test@wesbyte.app', '0991234567', '1790012345001', 'anual_unico')
+          assert pp_cfg['amount'] == 21600
+          print('Todas las validaciones de negocio pasaron exitosamente.')
+          "
+
+      - name: Validar construcción de imagen Docker
+        run: |
+          docker build -t wesbyte-portal-web:ci-check .
+
+  deploy:
+    name: Despliegue en Contabo VPS (Puerto 8085)
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ejecutar despliegue vía SSH en Contabo
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.CONTABO_HOST }}
+          username: ${{ secrets.CONTABO_USER }}
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: ${{ secrets.CONTABO_PORT || 22 }}
+          script: |
+            set -e
+            APP_DIR="${{ secrets.CONTABO_PORTAL_DIR || '/opt/wesbyte_portal' }}"
+            echo "Navegando a $APP_DIR..."
+            cd "$APP_DIR"
+
+            echo "Descargando últimos cambios de main..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            if [ ! -f .env ]; then
+              echo "Creando archivo .env base desde .env.example (Puerto 8085)..."
+              cp .env.example .env
+            fi
+
+            echo "Reconstruyendo y levantando contenedor wesbyte-portal-app en puerto 8085..."
+            docker compose down || true
+            docker compose up -d --build
+
+            echo "Limpiando imágenes antiguas en desuso..."
+            docker image prune -f
+
+            echo "Verificando contenedores activos (broker-pmp-app en 8080 y wesbyte-portal-app en 8085)..."
+            docker ps

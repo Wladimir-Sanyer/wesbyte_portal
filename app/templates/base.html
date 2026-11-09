@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <title>{% block title %}Wesbyte · Automatiza tu negocio y olvídate de los reprocesos{% endblock %}</title>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/css/tabler.min.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/portal.css?v=20261109_v3"/>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <div class="page">
+    <header class="navbar navbar-expand-md navbar-dark navbar-wesbyte sticky-top py-2">
+      <div class="container-xl">
+        <a href="/" class="navbar-brand d-flex align-items-center text-white text-decoration-none">
+          <img src="/static/img/logo.svg" alt="Wesbyte" style="height: 34px;" class="me-2" onerror="this.style.display='none'">
+          <span class="fw-black fs-2" style="font-weight:900;letter-spacing:-.03em;">Wesbyte</span>
+        </a>
+        <div class="d-flex align-items-center gap-1 flex-wrap">
+          <a href="/#beneficios" class="nav-link-top d-none d-md-inline">Beneficios</a>
+          <a href="/#planes-grid" class="nav-link-top d-none d-md-inline">Planes</a>
+          <a href="/#calculadora-custom" class="nav-link-top d-none d-md-inline">Calculadora</a>
+          <a href="/#integraciones" class="nav-link-top d-none d-lg-inline">Integraciones</a>
+          {% if sesion %}
+          <a href="/mi-portal" class="btn btn-sm btn-warm ms-2"><i class="ti ti-layout-dashboard me-1"></i> Mi portal</a>
+          <a href="/salir" class="btn btn-sm btn-outline-light ms-1">Salir</a>
+          {% else %}
+          <a href="/ingresar" class="btn btn-sm btn-outline-light ms-2"><i class="ti ti-login me-1"></i> Ya soy cliente</a>
+          <a href="/#planes-grid" class="btn btn-sm btn-warm ms-1"><i class="ti ti-rocket me-1"></i> Empezar</a>
+          {% endif %}
+        </div>
+      </div>
+    </header>
+
+    <div class="page-wrapper">
+      {% block content %}{% endblock %}
+
+      <footer class="footer footer-transparent d-print-none border-top bg-white mt-5 py-4">
+        <div class="container-xl">
+          <div class="row align-items-center justify-content-between g-3">
+            <div class="col-md-7">
+              <div class="d-flex align-items-center gap-2 mb-1">
+                <i class="ti ti-shield-lock fs-2" style="color:#7c3aed"></i>
+                <strong>Tus datos, solo tuyos: base de datos aislada y acuerdo de confidencialidad</strong>
+              </div>
+              <p class="text-muted small mb-0">
+                Si tu equipo legal requiere que firmemos un acuerdo de confidencialidad (NDA) propio, envíalo a
+                <a href="mailto:{{ soporte_email or 'soporte@wesbyte.app' }}" class="fw-bold">{{ soporte_email or 'soporte@wesbyte.app' }}</a>.
+              </p>
+            </div>
+            <div class="col-md-5 text-md-end text-muted small">
+              <div>Wesbyte {{ app_version or 'v1.0.0' }} · Pagos seguros con <strong>PayPhone</strong></div>
+              <div>© 2026 Wesbyte. Todos los derechos reservados.</div>
+            </div>
+          </div>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/js/tabler.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

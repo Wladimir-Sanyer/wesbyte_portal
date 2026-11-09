@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Mi portal · {{ d.cliente.nombre }}{% endblock %}
+{% block extra_head %}<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>{% endblock %}
+
+{% macro barra(label, icon, u) %}
+<div class="mb-4">
+  <div class="d-flex justify-content-between mb-1">
+    <span class="fw-bold"><i class="ti {{ icon }} me-1" style="color:#7c3aed"></i>{{ label }}</span>
+    <span class="text-muted small"><strong>{{ u.usado }}</strong> de {{ u.limite }} · {{ u.pct }}%</span>
+  </div>
+  <div class="bar-track"><div class="bar-fill {% if u.pct >= 85 %}warn{% endif %}" style="width: {{ u.pct }}%"></div></div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<section class="hero-portal" style="padding:2.2rem 0 3.2rem;">
+  <div class="container-xl">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+      <div>
+        <span class="hero-chip mb-2"><i class="ti ti-circle-check"></i> Cuenta activa · {{ d.plan.nombre or 'Plan Wesbyte' }}</span>
+        <h1 class="mb-1" style="font-weight:900;letter-spacing:-.03em;">Hola, {{ sesion.nombre.split(' ')[0] }} 👋</h1>
+        <div style="color:rgba(255,255,255,.8)">{{ d.cliente.nombre }} · tu base de datos <code style="color:#67e8f9">{{ d.cliente.dataset_id }}</code></div>
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ wesbyte_app_url }}" target="_blank" class="btn btn-warm btn-lg"><i class="ti ti-external-link me-1"></i> Abrir aplicación Wesbyte</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="container-xl" style="margin-top:-2rem;position:relative;z-index:2;">
+  <!-- KPIs -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3"><div class="kpi"><div class="text-muted small fw-bold">Días de servicio</div><div class="n" style="color:#4f46e5">{{ d.dias_restantes if d.dias_restantes is not none else '—' }}</div><div class="small text-muted">hasta {{ d.sus.fecha_fin if d.sus else '—' }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="kpi"><div class="text-muted small fw-bold">Usuarios</div><div class="n" style="color:#7c3aed">{{ d.usuarios|length }}<span class="fs-4 text-muted"> / {{ d.cliente.max_usuarios }}</span></div><div class="small text-muted">cuentas activas</div></div></div>
+    <div class="col-6 col-lg-3"><div class="kpi"><div class="text-muted small fw-bold">Clientes cargados</div><div class="n" style="color:#c026d3">{{ d.total_clientes }}</div><div class="small text-muted">en tu base de datos</div></div></div>
+    <div class="col-6 col-lg-3"><div class="kpi"><div class="text-muted small fw-bold">Registros / pólizas</div><div class="n" style="color:#ea580c">{{ d.total_registros }}</div><div class="small text-muted">seguimiento total</div></div></div>
+  </div>
+
+  <div class="row g-4">
+    <!-- Consumos -->
+    <div class="col-lg-7">
+      <div class="card border-0 shadow-sm mb-4" style="border-radius:24px;">
+        <div class="card-body p-4">
+          <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3 class="mb-0" style="font-weight:900;">Consumo del mes</h3>
+            <span class="badge bg-indigo-lt text-indigo fw-bold">{{ d.periodo }}</span>
+          </div>
+          {{ barra('Alertas por WhatsApp', 'ti-brand-whatsapp', d.consumos.whatsapp) }}
+          {{ barra('Correos de cumpleaños', 'ti-cake', d.consumos.emails) }}
+          {{ barra('Consultas a datos estatales', 'ti-building-bank', d.consumos.api) }}
+          <div class="small text-muted">¿Necesitas más capacidad? <a href="mailto:{{ soporte_email }}?subject=Ampliar%20mi%20plan%20-%20{{ d.cliente.nombre }}" class="fw-bold">Escríbenos</a> y ajustamos tu plan.</div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm" style="border-radius:24px;">
+        <div class="card-body p-4">
+          <h3 style="font-weight:900;">Dashboard de tus datos</h3>
+          {% if d.total_registros > 0 %}
+          <canvas id="chartRegistros" height="120"></canvas>
+          {% else %}
+          <div class="text-center py-4 text-muted">
+            <i class="ti ti-chart-bar" style="font-size:3rem;color:#c4b5fd"></i>
+            <p class="mb-0 mt-2">Aún no hay datos cargados. Entra a la aplicación Wesbyte para cargar tus clientes y pólizas, y aquí verás tu dashboard.</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Proceso / seguimiento -->
+    <div class="col-lg-5">
+      <div class="card border-0 shadow-sm mb-4" style="border-radius:24px;">
+        <div class="card-body p-4">
+          <h3 class="mb-4" style="font-weight:900;">Seguimiento de tu proceso</h3>
+          <ul class="timeline">
+            <li><span class="dot"><i class="ti ti-user-check"></i></span><div class="fw-bold">Registro completado</div><div class="small text-muted">{{ d.cliente.created_at.strftime('%d/%m/%Y') if d.cliente.created_at else '' }}</div></li>
+            <li><span class="dot"><i class="ti ti-credit-card"></i></span><div class="fw-bold">Pago verificado</div><div class="small text-muted">{% if d.sus %}{{ 'Anual (-10%)' if d.sus.modalidad_pago == 'anual_unico' else 'Mensual recurrente' }} · ${{ "%.2f"|format(d.sus.monto_total_cobrado) }}{% endif %}</div></li>
+            <li><span class="dot"><i class="ti ti-database"></i></span><div class="fw-bold">Base de datos creada</div><div class="small text-muted">Privada y lista para usar</div></li>
+            <li><span class="dot"><i class="ti ti-shield-check"></i></span><div class="fw-bold">Acuerdo de confidencialidad vigente</div><div class="small text-muted">{% if d.cliente.requiere_nda_personalizado %}NDA propio en revisión con nuestro equipo{% else %}Aceptado{% endif %}</div></li>
+            <li><span class="dot {% if d.total_clientes == 0 %}pending{% endif %}"><i class="ti ti-upload"></i></span><div class="fw-bold">Carga de tus clientes</div><div class="small text-muted">{% if d.total_clientes == 0 %}Pendiente: carga tus clientes en la aplicación{% else %}{{ d.total_clientes }} clientes cargados{% endif %}</div></li>
+            <li><span class="dot {% if d.consumos.whatsapp.usado == 0 and d.consumos.emails.usado == 0 %}pending{% endif %}"><i class="ti ti-bolt"></i></span><div class="fw-bold">Automatizaciones en marcha</div><div class="small text-muted">{% if d.consumos.whatsapp.usado == 0 and d.consumos.emails.usado == 0 %}Se activan al cargar tus datos{% else %}Enviando alertas y correos{% endif %}</div></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-4" style="border-radius:24px;">
+        <div class="card-body p-4">
+          <h4 style="font-weight:900;">Tus pagos</h4>
+          {% for p in d.pagos %}
+          <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+            <div><div class="fw-bold small">{{ 'Anual' if p.modalidad_pago == 'anual_unico' else 'Mensual' }} · {{ p.estado_pago }}</div><div class="text-muted" style="font-size:.75rem">{{ p.created_at.strftime('%d/%m/%Y') if p.created_at else '' }}</div></div>
+            <strong>${{ "%.2f"|format(p.monto_usd) }}</strong>
+          </div>
+          {% else %}<div class="text-muted small">Sin pagos registrados.</div>{% endfor %}
+        </div>
+      </div>
+
+      <div class="feature-panel panel-custom" style="padding:1.6rem;">
+        <h4 style="font-weight:900;">¿Quieres conectar tus sistemas o una mejora a medida?</h4>
+        <p class="mb-3">Creamos una API para tus datos o desarrollamos lo que necesites. Somos low cost.</p>
+        <a class="btn btn-light fw-bold" style="color:#ea580c" href="mailto:{{ soporte_email }}?subject=Cotizaci%C3%B3n%20-%20{{ d.cliente.nombre }}">Cotizar ahora</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if d.total_registros > 0 %}
+<script>
+  const etiquetas = {registros_medicos: "Médicos", registros_vehiculares: "Vehiculares", registros_vida_e_inversion: "Vida e inversión", registros_ramos_generales: "Ramos generales"};
+  const datos = {{ d.registros | tojson }};
+  new Chart(document.getElementById("chartRegistros"), {
+    type: "bar",
+    data: {
+      labels: Object.keys(datos).map(k => etiquetas[k] || k),
+      datasets: [{ data: Object.values(datos), backgroundColor: ["#4f46e5", "#06b6d4", "#d946ef", "#f59e0b"], borderRadius: 10 }]
+    },
+    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+  });
+</script>
+{% endif %}
+{% endblock %}

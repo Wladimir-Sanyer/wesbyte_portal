@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+
+{% block title %}Checkout PayPhone · {{ reg.nombre_empresa }} · Wesbyte Portal{% endblock %}
+
+{% block extra_head %}
+<!-- PayPhone Cajita de Pagos Oficial CSS & JS -->
+<link rel="stylesheet" href="https://cdn.payphonetodoesfacil.com/box/v1.1/payphone-payment-box.css"/>
+<script type="module" src="https://cdn.payphonetodoesfacil.com/box/v1.1/payphone-payment-box.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container-xl py-4">
+  <!-- Barra de Progreso -->
+  <div class="d-flex flex-wrap gap-2 mb-4">
+    <span class="badge bg-green-lt text-green px-3 py-2"><i class="ti ti-check me-1"></i> 1. Plan Seleccionado ({{ plan.nombre }})</span>
+    <span class="badge bg-green-lt text-green px-3 py-2"><i class="ti ti-check me-1"></i> 2. Usuario y Empresa Registrados ({{ reg.nombre_empresa }})</span>
+    <span class="badge bg-primary text-white px-3 py-2"><i class="ti ti-credit-card me-1"></i> 3. Pago con PayPhone y Activación de Dataset</span>
+  </div>
+
+  <div class="row g-4">
+    <!-- Columna Izquierda: Elección de las 2 Opciones de Pago + Pasarela PayPhone -->
+    <div class="col-lg-7">
+      <div class="card rounded-4 border-0 shadow-sm mb-4">
+        <div class="card-header bg-white py-3 border-bottom">
+          <div>
+            <span class="text-uppercase text-muted small fw-bold">PASO 3 · SELECCIONA TU MODALIDAD DE PAGO</span>
+            <h3 class="card-title fw-extrabold fs-2 mb-0">Elige cómo deseas pagar tu {{ plan.nombre }}</h3>
+          </div>
+        </div>
+
+        <div class="card-body p-4">
+          <!-- Las 2 Opciones de Cobro con PayPhone -->
+          <div class="row g-3 mb-4">
+            <!-- Opción A: 1 Solo Pago Anual con 10% de Descuento -->
+            <div class="col-md-6">
+              <div id="optCardAnual" class="advisor-btn active h-100 position-relative" onclick="seleccionarModalidadCheckout('anual_unico')">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span class="badge bg-green text-white fw-bold">AHORRA 10%</span>
+                  <input type="radio" name="modalidad_checkout" id="radAnual" class="form-check-input" checked>
+                </div>
+                <div class="fw-bold text-dark fs-3 mb-1">1 Solo Pago Anual</div>
+                <div class="d-flex align-items-baseline gap-2 mb-1">
+                  <span class="fs-1 fw-extrabold text-primary">${{ "%.2f"|format(plan.precio_anual_con_descuento) }}</span>
+                  <span class="text-muted text-decoration-line-through small">${{ "%.2f"|format(plan.precio_anual) }}</span>
+                </div>
+                <div class="text-success small fw-semibold">
+                  Descuento inmediato de ${{ "%.2f"|format(plan.ahorro_anual) }} USD (equivale a ${{ "%.2f"|format(plan.equivalente_mensual_anual) }}/mes)
+                </div>
+              </div>
+            </div>
+
+            <!-- Opción B: Pago Mensual Recurrente -->
+            <div class="col-md-6">
+              <div id="optCardMensual" class="advisor-btn h-100 position-relative" onclick="seleccionarModalidadCheckout('mensual_recurrente')">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span class="badge bg-azure-lt text-azure fw-bold">SUSCRIPCIÓN MENSUAL</span>
+                  <input type="radio" name="modalidad_checkout" id="radMensual" class="form-check-input">
+                </div>
+                <div class="fw-bold text-dark fs-3 mb-1">Pago Mensual Recurrente</div>
+                <div class="d-flex align-items-baseline gap-2 mb-1">
+                  <span class="fs-1 fw-extrabold text-dark">${{ "%.2f"|format(plan.precio_mensual) }}</span>
+                  <span class="text-muted small">/ mes</span>
+                </div>
+                <div class="text-muted small">
+                  Débito automático mensual vía PayPhone (${{ "%.2f"|format(plan.precio_anual) }} anuales)
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Caja de Pasarela PayPhone -->
+          <div class="border rounded-4 p-4 bg-light">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+              <div class="d-flex align-items-center gap-2">
+                <span class="avatar rounded-3 text-white fw-extrabold" style="background: #ff5a00;">PP</span>
+                <div>
+                  <h4 class="mb-0 fw-extrabold">Pasarela Segura PayPhone</h4>
+                  <div class="small text-muted" id="subtituloMetodoPayphone">
+                    Cobro único anual con 10% de descuento · Tarjeta Visa / Mastercard o App PayPhone
+                  </div>
+                </div>
+              </div>
+              <span class="badge bg-orange-lt text-orange fw-bold px-3 py-2">
+                <i class="ti ti-lock me-1"></i> TLS 256-bit
+              </span>
+            </div>
+
+            <!-- Contenedor para la Cajita de Pagos Oficial de PayPhone si hay Token configurado -->
+            <div id="pp-button" class="mb-3"></div>
+
+            <!-- Pestañas de Pago Directo PayPhone (Tarjeta / App PayPhone Celular) -->
+            <ul class="nav nav-tabs nav-fill mb-3 bg-white rounded-3 p-1 border" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active fw-bold rounded-2" data-bs-toggle="tab" data-bs-target="#tab-payphone-app" type="button">
+                  <i class="ti ti-device-mobile-Charging me-1 text-warning"></i> Cobro a App PayPhone (Celular)
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link fw-bold rounded-2" data-bs-toggle="tab" data-bs-target="#tab-payphone-card" type="button">
+                  <i class="ti ti-credit-card me-1 text-primary"></i> Tarjeta Crédito / Débito (PayPhone)
+                </button>
+              </li>
+            </ul>
+
+            <div class="tab-content bg-white p-3 rounded-3 border">
+              <!-- Tab 1: Cobro por App PayPhone (Número Celular) -->
+              <div class="tab-pane fade show active" id="tab-payphone-app" role="tabpanel">
+                <div class="row g-3">
+                  <div class="col-md-7">
+                    <label class="form-label fw-bold">Número Celular registrado en PayPhone</label>
+                    <div class="input-group">
+                      <span class="input-group-text">+593</span>
+                      <input type="tel" class="form-control" id="ppPhoneInput" value="{{ reg.celular }}">
+                    </div>
+                    <div class="form-text small">
+                      Recibirás la notificación de cobro en tu aplicación PayPhone para autorizar el pago.
+                    </div>
+                  </div>
+                  <div class="col-md-5">
+                    <label class="form-label fw-bold">Cédula / RUC del Titular</label>
+                    <input type="text" class="form-control" id="ppDocInput" value="{{ reg.ruc_cedula or '1790012345001' }}">
+                  </div>
+                </div>
+
+                <button type="button" id="btnPagarAppPayphone" class="btn btn-payphone w-100 py-3 fs-3 mt-3" onclick="ejecutarPagoPayphone('PAYPHONE_APP')">
+                  <i class="ti ti-bolt me-1"></i> Pagar <span class="lblMontoBoton">${{ "%.2f"|format(plan.precio_anual_con_descuento) }}</span> con App PayPhone y Crear mi Dataset
+                </button>
+              </div>
+
+              <!-- Tab 2: Tarjeta Visa / Mastercard vía PayPhone -->
+              <div class="tab-pane fade" id="tab-payphone-card" role="tabpanel">
+                <div class="row g-3">
+                  <div class="col-12">
+                    <label class="form-label fw-bold">Nombre en la Tarjeta</label>
+                    <input type="text" class="form-control" id="ppCardHolder" value="{{ reg.nombres_completos }}">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label fw-bold">Número de Tarjeta (Visa / Mastercard)</label>
+                    <input type="text" class="form-control" id="ppCardNumber" value="4532 •••• •••• 4242" maxlength="19">
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label fw-bold">Expira (MM/AA)</label>
+                    <input type="text" class="form-control" id="ppCardExp" value="08/29" maxlength="5">
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label fw-bold">CVV</label>
+                    <input type="password" class="form-control" id="ppCardCvv" value="884" maxlength="4">
+                  </div>
+                </div>
+
+                <button type="button" id="btnPagarCardPayphone" class="btn btn-payphone w-100 py-3 fs-3 mt-3" onclick="ejecutarPagoPayphone('PAYPHONE_CARD')">
+                  <i class="ti ti-shield-check me-1"></i> Procesar <span class="lblMontoBoton">${{ "%.2f"|format(plan.precio_anual_con_descuento) }}</span> con Tarjeta y Crear Dataset
+                </button>
+              </div>
+            </div>
+
+            <!-- Opción avanzada para probar con credenciales PayPhone en vivo si se desea -->
+            <div class="mt-3">
+              <a class="small text-muted text-decoration-none" data-bs-toggle="collapse" href="#collapseCredencialesPP">
+                <i class="ti ti-settings me-1"></i> Configurar Token / StoreId de PayPhone en vivo (opcional)
+              </a>
+              <div class="collapse mt-2" id="collapseCredencialesPP">
+                <div class="card card-body p-3 bg-white border">
+                  <div class="row g-2">
+                    <div class="col-md-7">
+                      <label class="form-label small fw-bold mb-1">PayPhone Bearer Token</label>
+                      <input type="password" class="form-control form-control-sm" id="customPayphoneToken" value="{{ payphone_token }}" placeholder="Pega tu Token de PayPhone Developer">
+                    </div>
+                    <div class="col-md-5">
+                      <label class="form-label small fw-bold mb-1">Store ID</label>
+                      <input type="text" class="form-control form-control-sm" id="customPayphoneStoreId" value="{{ payphone_store_id }}" placeholder="StoreId de tu comercio">
+                    </div>
+                  </div>
+                  <button type="button" class="btn btn-xs btn-outline-primary mt-2 align-self-start" onclick="renderizarCajitaOficialPayphone()">
+                    Renderizar Cajita Oficial PayPhone (PPPaymentButtonBox)
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Columna Derecha: Resumen de Orden y Aprovisionamiento Automático en BigQuery -->
+    <div class="col-lg-5">
+      <div class="card rounded-4 border-0 shadow-sm mb-3">
+        <div class="card-header bg-dark text-white py-3">
+          <h4 class="card-title mb-0 fw-bold">
+            <i class="ti ti-receipt me-1 text-warning"></i> Resumen de Suscripción y Aprovisionamiento
+          </h4>
+        </div>
+        <div class="card-body p-4">
+          <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom">
+            <div>
+              <div class="text-muted small">Empresa Contratante</div>
+              <div class="fw-extrabold fs-3">{{ reg.nombre_empresa }}</div>
+              <div class="small text-muted">{{ reg.nombres_completos }} · {{ reg.correo }}</div>
+            </div>
+            <span class="badge bg-azure-lt">ID #{{ reg.cliente_id }}</span>
+          </div>
+
+          <!-- Qué se creará automáticamente en BigQuery al confirmar el pago -->
+          <div class="mb-3 pb-3 border-bottom">
+            <div class="text-uppercase text-muted small fw-bold mb-2">Acciones automáticas tras verificar el pago:</div>
+            <ul class="list-unstyled space-y-2 small mb-0">
+              <li class="d-flex align-items-start gap-2">
+                <i class="ti ti-database-plus text-primary fs-3 mt-1"></i>
+                <div>
+                  Creación del dataset <code>{{ reg.dataset_id }}</code> (en minúscula, sin espacios ni tildes).
+                </div>
+              </li>
+              <li class="d-flex align-items-start gap-2 mt-2">
+                <i class="ti ti-table-import text-success fs-3 mt-1"></i>
+                <div>
+                  Clonación de todas las tablas maestras y de pólizas vacías y listas para usar.
+                </div>
+              </li>
+              <li class="d-flex align-items-start gap-2 mt-2">
+                <i class="ti ti-user-shield text-warning fs-3 mt-1"></i>
+                <div>
+                  Creación del usuario <code>admin</code> y de tu usuario <code>{{ reg.username }}</code> con tu misma contraseña en tu aplicación.
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Desglose Financiero -->
+          <div class="bg-light rounded-3 p-3 border mb-3">
+            <div class="d-flex justify-content-between mb-1">
+              <span class="text-muted">Plan Seleccionado:</span>
+              <strong>{{ plan.nombre }} ({{ plan.max_usuarios }} usr)</strong>
+            </div>
+            <div class="d-flex justify-content-between mb-1" id="rowSubtotal">
+              <span class="text-muted">Valor Anual Base:</span>
+              <span>${{ "%.2f"|format(plan.precio_anual) }} USD</span>
+            </div>
+            <div class="d-flex justify-content-between mb-2 text-success fw-bold" id="rowDescuento">
+              <span>Descuento Pago Único Anual (-10%):</span>
+              <span>-${{ "%.2f"|format(plan.ahorro_anual) }} USD</span>
+            </div>
+            <div class="d-flex justify-content-between pt-2 border-top fs-2 fw-extrabold text-dark">
+              <span id="lblTotalPagarTitulo">Total a Pagar Hoy:</span>
+              <span class="text-primary" id="lblTotalPagarValor">${{ "%.2f"|format(plan.precio_anual_con_descuento) }} USD</span>
+            </div>
+          </div>
+
+          <!-- Recordatorio de Acuerdo de Confidencialidad -->
+          <div class="alert alert-azure small mb-0">
+            <div class="fw-bold mb-1"><i class="ti ti-shield-lock me-1"></i> Acuerdo de Confidencialidad Activo</div>
+            Tus datos están protegidos bajo secreto comercial en tu propio dataset. Si requieres que nuestro equipo firme un NDA propio de tu empresa, envíalo a
+            <a href="mailto:{{ soporte_email }}" class="fw-bold">{{ soporte_email }}</a>.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  const CLIENTE_ID = {{ reg.cliente_id }};
+  const BOX_ANUAL = {{ box_anual_json | safe }};
+  const BOX_MENSUAL = {{ box_mensual_json | safe }};
+  const PRECIO_ANUAL_BASE = {{ plan.precio_anual }};
+  const PRECIO_ANUAL_DESC = {{ plan.precio_anual_con_descuento }};
+  const AHORRO_ANUAL = {{ plan.ahorro_anual }};
+  const PRECIO_MENSUAL = {{ plan.precio_mensual }};
+
+  let modalidadSeleccionada = "{{ reg.modalidad_preferida or 'anual_unico' }}";
+
+  function seleccionarModalidadCheckout(modalidad) {
+    modalidadSeleccionada = modalidad;
+    const cardAnual = document.getElementById("optCardAnual");
+    const cardMensual = document.getElementById("optCardMensual");
+    const radAnual = document.getElementById("radAnual");
+    const radMensual = document.getElementById("radMensual");
+
+    const rowSubtotal = document.getElementById("rowSubtotal");
+    const rowDescuento = document.getElementById("rowDescuento");
+    const lblTotalValor = document.getElementById("lblTotalPagarValor");
+    const subtituloMetodo = document.getElementById("subtituloMetodoPayphone");
+
+    if (modalidad === "anual_unico") {
+      cardAnual.classList.add("active");
+      cardMensual.classList.remove("active");
+      radAnual.checked = true;
+      radMensual.checked = false;
+
+      rowSubtotal.innerHTML = `<span class="text-muted">Valor Anual Base:</span><span>$${PRECIO_ANUAL_BASE.toFixed(2)} USD</span>`;
+      rowDescuento.classList.remove("d-none");
+      lblTotalValor.textContent = `$${PRECIO_ANUAL_DESC.toFixed(2)} USD`;
+      subtituloMetodo.textContent = "Cobro único por 1 año con 10% de descuento incluido";
+      document.querySelectorAll(".lblMontoBoton").forEach(el => el.textContent = `$${PRECIO_ANUAL_DESC.toFixed(2)}`);
+    } else {
+      cardMensual.classList.add("active");
+      cardAnual.classList.remove("active");
+      radMensual.checked = true;
+      radAnual.checked = false;
+
+      rowSubtotal.innerHTML = `<span class="text-muted">Cuota Mensual Recurrente:</span><span>$${PRECIO_MENSUAL.toFixed(2)} USD / mes</span>`;
+      rowDescuento.classList.add("d-none");
+      lblTotalValor.textContent = `$${PRECIO_MENSUAL.toFixed(2)} USD / mes`;
+      subtituloMetodo.textContent = "Suscripción con cobro mensual recurrente automático vía PayPhone";
+      document.querySelectorAll(".lblMontoBoton").forEach(el => el.textContent = `$${PRECIO_MENSUAL.toFixed(2)}/mes`);
+    }
+
+    renderizarCajitaOficialPayphone();
+  }
+
+  function renderizarCajitaOficialPayphone() {
+    const token = (document.getElementById("customPayphoneToken")?.value || BOX_ANUAL.token || "").trim();
+    const storeId = (document.getElementById("customPayphoneStoreId")?.value || BOX_ANUAL.storeId || "").trim();
+    const container = document.getElementById("pp-button");
+    if (!token || !window.PPPaymentButtonBox) {
+      container.innerHTML = "";
+      return;
+    }
+
+    const cfg = modalidadSeleccionada === "anual_unico" ? BOX_ANUAL : BOX_MENSUAL;
+    container.innerHTML = "";
+    try {
+      const ppb = new PPPaymentButtonBox({
+        token: token,
+        storeId: storeId || undefined,
+        clientTransactionId: cfg.clientTransactionId,
+        amount: cfg.amount,
+        amountWithoutTax: cfg.amountWithoutTax,
+        amountWithTax: 0,
+        tax: 0,
+        service: 0,
+        tip: 0,
+        currency: "USD",
+        reference: cfg.reference,
+        email: cfg.email,
+        phoneNumber: cfg.phoneNumber,
+        documentId: cfg.documentId,
+        identificationType: cfg.identificationType
+      });
+      ppb.render("pp-button");
+    } catch (e) {
+      console.warn("No se pudo inicializar PPPaymentButtonBox:", e);
+    }
+  }
+
+  async function ejecutarPagoPayphone(metodo) {
+    const cfg = modalidadSeleccionada === "anual_unico" ? BOX_ANUAL : BOX_MENSUAL;
+    const montoMostrar = modalidadSeleccionada === "anual_unico"
+      ? `$${PRECIO_ANUAL_DESC.toFixed(2)} USD (Anual con 10% OFF)`
+      : `$${PRECIO_MENSUAL.toFixed(2)} USD / mes (Pago Recurrente)`;
+
+    Swal.fire({
+      title: "Verificando Pago con PayPhone y Creando Dataset...",
+      html: `
+        <div class="text-start small mt-2">
+          <p class="mb-2"><i class="ti ti-check text-success me-1"></i> Confirmando cobro en PayPhone: <strong>${montoMostrar}</strong></p>
+          <p class="mb-2"><i class="ti ti-database text-primary me-1"></i> Creando dataset <code>{{ reg.dataset_id }}</code> en Google BigQuery...</p>
+          <p class="mb-2"><i class="ti ti-copy text-azure me-1"></i> Copiando tablas vacías...</p>
+          <p class="mb-0"><i class="ti ti-user-check text-warning me-1"></i> Creando usuario <code>admin</code> y <code>{{ reg.username }}</code> en <code>maestra_usuarios_app</code>...</p>
+        </div>
+      `,
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading();
+      }
+    });
+
+    try {
+      const resp = await fetch("/api/checkout/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cliente_id: CLIENTE_ID,
+          modalidad_pago: modalidadSeleccionada,
+          metodo_pago: metodo,
+          client_transaction_id: cfg.clientTransactionId,
+          payphone_phone: document.getElementById("ppPhoneInput")?.value || "",
+          card_last4: (document.getElementById("ppCardNumber")?.value || "4242").slice(-4),
+          simulated: true
+        })
+      });
+      const json = await resp.json();
+      if (!resp.ok || !json.success) {
+        throw new Error(json.detail || "Error confirmando el pago y aprovisionando el dataset");
+      }
+      window.location.href = json.redirect_url;
+    } catch (err) {
+      Swal.fire("Error en el procesamiento", err.message, "error");
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    seleccionarModalidadCheckout(modalidadSeleccionada);
+  });
+</script>
+{% endblock %}

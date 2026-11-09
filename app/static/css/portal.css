@@ -1,0 +1,271 @@
+:root {
+  --wb-ink: #0b1020;
+  --wb-night: #12163a;
+  --wb-indigo: #4f46e5;
+  --wb-violet: #7c3aed;
+  --wb-fuchsia: #d946ef;
+  --wb-cyan: #06b6d4;
+  --wb-sun: #f59e0b;
+  --wb-coral: #ff5a36;
+  --wb-soft: #f5f3ff;
+  --wb-line: #e5e7f5;
+  --wb-grad: linear-gradient(135deg, #4f46e5 0%, #7c3aed 55%, #d946ef 100%);
+  --wb-grad-warm: linear-gradient(135deg, #ff5a36 0%, #f59e0b 100%);
+}
+
+body {
+  background: #fbfaff;
+  color: var(--wb-ink);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+html { scroll-behavior: smooth; }
+
+/* ---------- Navbar ---------- */
+.navbar-wesbyte {
+  background: rgba(11, 16, 32, 0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.navbar-wesbyte .nav-link-top {
+  color: rgba(255, 255, 255, 0.78);
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-decoration: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
+}
+.navbar-wesbyte .nav-link-top:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+
+/* ---------- Botones ---------- */
+.btn-grad {
+  background: var(--wb-grad);
+  color: #fff !important;
+  border: 0;
+  font-weight: 700;
+  box-shadow: 0 10px 26px rgba(124, 58, 237, 0.35);
+  transition: transform .2s, box-shadow .2s;
+}
+.btn-grad:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(124, 58, 237, 0.5); }
+.btn-warm {
+  background: var(--wb-grad-warm);
+  color: #fff !important;
+  border: 0;
+  font-weight: 800;
+  box-shadow: 0 10px 26px rgba(255, 90, 54, 0.38);
+  transition: transform .2s, box-shadow .2s;
+}
+.btn-warm:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(255, 90, 54, 0.55); }
+.btn-payphone { background: var(--wb-grad-warm); color: #fff !important; border: 0; font-weight: 800; box-shadow: 0 8px 22px rgba(255, 90, 54, .3); }
+.btn-payphone:hover { filter: brightness(1.05); transform: translateY(-1px); }
+
+/* ---------- Hero ---------- */
+.hero-portal {
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+  padding: 4.5rem 0 5.5rem;
+  background:
+    radial-gradient(circle at 85% 10%, rgba(217, 70, 239, 0.45), transparent 40%),
+    radial-gradient(circle at 5% 90%, rgba(6, 182, 212, 0.35), transparent 40%),
+    linear-gradient(160deg, #0b1020 0%, #1b1450 55%, #3b1d8f 100%);
+}
+.hero-portal::after {
+  content: ""; position: absolute; inset: 0;
+  background-image: radial-gradient(rgba(255,255,255,.07) 1px, transparent 1px);
+  background-size: 26px 26px; pointer-events: none;
+}
+.hero-portal .container-xl { position: relative; z-index: 1; }
+.hero-title { font-size: clamp(2.2rem, 5vw, 3.9rem); font-weight: 900; line-height: 1.05; letter-spacing: -0.03em; }
+.text-gradient {
+  background: linear-gradient(90deg, #fcd34d, #ff8a5c, #f0abfc);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.hero-chip {
+  display: inline-flex; align-items: center; gap: .5rem;
+  padding: .45rem 1rem; border-radius: 999px; font-weight: 700; font-size: .85rem;
+  background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.22); color: #fff;
+}
+.hero-stat { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18); border-radius: 16px; padding: 1rem 1.2rem; }
+.hero-stat .n { font-size: 1.8rem; font-weight: 900; line-height: 1; }
+
+/* ---------- Dolor / Beneficios ---------- */
+.pain-card {
+  background: #fff; border: 1px solid var(--wb-line); border-radius: 20px; padding: 1.6rem; height: 100%;
+  transition: transform .25s, box-shadow .25s;
+}
+.pain-card:hover { transform: translateY(-6px); box-shadow: 0 22px 44px rgba(79, 70, 229, .13); }
+.icon-bubble {
+  width: 54px; height: 54px; border-radius: 16px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 1.6rem; color: #fff; margin-bottom: 1rem;
+}
+.bg-grad-1 { background: linear-gradient(135deg, #4f46e5, #7c3aed); }
+.bg-grad-2 { background: linear-gradient(135deg, #06b6d4, #4f46e5); }
+.bg-grad-3 { background: linear-gradient(135deg, #ff5a36, #f59e0b); }
+.bg-grad-4 { background: linear-gradient(135deg, #d946ef, #7c3aed); }
+
+.section-dark {
+  background: linear-gradient(160deg, #0b1020 0%, #1b1450 100%);
+  color: #fff; position: relative; overflow: hidden;
+}
+.section-dark::before {
+  content: ""; position: absolute; width: 520px; height: 520px; right: -140px; top: -160px;
+  background: radial-gradient(circle, rgba(217,70,239,.35), transparent 65%);
+}
+
+/* ---------- Toggle ---------- */
+.toggle-pay { background: #fff; border: 1px solid var(--wb-line); border-radius: 999px; padding: .4rem; display: inline-flex; gap: .3rem; box-shadow: 0 8px 22px rgba(79,70,229,.08); }
+.toggle-pay button { border: 0; background: transparent; border-radius: 999px; padding: .65rem 1.4rem; font-weight: 700; color: #475569; }
+.toggle-pay button.on { background: var(--wb-grad); color: #fff; box-shadow: 0 8px 18px rgba(124,58,237,.35); }
+
+/* ---------- Planes ---------- */
+.plan-card {
+  border-radius: 24px;
+  border: 2px solid var(--wb-line);
+  background-color: #ffffff !important;
+  color: #1e293b !important;
+  position: relative;
+  overflow: hidden;
+  transition: all .3s cubic-bezier(.16,1,.3,1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+}
+.plan-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 28px 54px rgba(0, 0, 0, 0.18);
+}
+.plan-card h3 {
+  color: #0f172a !important;
+}
+.plan-card p {
+  color: #64748b !important;
+}
+.plan-card ul li {
+  color: #334155 !important;
+  font-size: 0.93rem;
+}
+.plan-card ul li strong {
+  color: #0f172a !important;
+}
+.plan-card ul li code {
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+  font-weight: 700;
+  padding: 0.15rem 0.4rem;
+  border-radius: 6px;
+}
+
+.plan-card.plan-gold {
+  border: 3px solid #f59e0b !important;
+  background-color: #ffffff !important;
+  box-shadow: 0 24px 50px rgba(245, 158, 11, 0.22) !important;
+  transform: scale(1.03);
+}
+.plan-card.plan-gold:hover {
+  transform: scale(1.03) translateY(-8px);
+}
+.gold-ribbon {
+  background: var(--wb-grad-warm);
+  color: #ffffff !important;
+  font-weight: 800;
+  font-size: .8rem;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  padding: .6rem 1rem;
+  text-align: center;
+}
+.tier-badge-bronze { background: #fff7ed !important; color: #c2410c !important; border: 1px solid #fed7aa; }
+.tier-badge-silver { background: #f1f5f9 !important; color: #334155 !important; border: 1px solid #cbd5e1; }
+.tier-badge-gold   { background: #fffbeb !important; color: #b45309 !important; border: 1px solid #fcd34d; }
+
+.price-number {
+  font-size: 3.2rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -.04em;
+  color: #0f172a !important;
+}
+
+.price-box {
+  background: #f8fafc !important;
+  border-radius: 18px;
+  padding: 1.1rem 1.2rem;
+  border: 1px solid #e2e8f0 !important;
+  color: #1e293b !important;
+}
+.price-box .text-muted {
+  color: #64748b !important;
+}
+.price-box strong {
+  color: #0f172a !important;
+}
+
+.check-ic {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ede9fe;
+  color: var(--wb-violet);
+  font-size: .85rem;
+  flex: 0 0 24px;
+}
+
+.save-pill {
+  background: #fef3c7 !important;
+  color: #92400e !important;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: .25rem .75rem;
+  font-size: .8rem;
+  display: inline-block;
+}
+
+/* ---------- Calculadora ---------- */
+.calculator-box { border-radius: 28px; background: #fff; border: 1px solid var(--wb-line); box-shadow: 0 24px 60px rgba(79,70,229,.1); }
+.range-slider { accent-color: var(--wb-violet); height: 8px; cursor: pointer; }
+.tick-row { position: relative; height: 2.6rem; margin-top: .15rem; font-size: .72rem; color: #64748b; }
+.tick-row span { position: absolute; white-space: nowrap; font-weight: 600; }
+.tick-row span.r0 { top: 0; }
+.tick-row span.r1 { top: 1.25rem; }
+.tick-row span::before { content: ""; position: absolute; left: 50%; top: -5px; width: 1px; height: 5px; background: #cbd5e1; }
+.tick-row span.t-gold { color: #b45309; font-weight: 800; }
+.val-pill { color: #fff; font-weight: 800; border-radius: 999px; padding: .25rem .9rem; font-size: .95rem; }
+.calc-result {
+  border-radius: 24px; color: #fff; padding: 1.6rem;
+  background: linear-gradient(160deg, #12163a 0%, #3b1d8f 100%);
+  box-shadow: 0 24px 50px rgba(59,29,143,.4);
+}
+.calc-cell { border-radius: 16px; padding: 1rem; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18); }
+.calc-cell.hot { background: var(--wb-grad-warm); border: 0; }
+.calc-tip { background: #fffbeb; color: #78350f; border-radius: 16px; padding: .9rem 1rem; border: 1px solid #fcd34d; }
+
+/* ---------- Integraciones / A medida ---------- */
+.feature-panel { border-radius: 28px; padding: 2.2rem; height: 100%; position: relative; overflow: hidden; }
+.panel-api { background: linear-gradient(145deg, #0b1020, #1e1b5e); color: #fff; }
+.panel-custom { background: linear-gradient(145deg, #ff5a36, #f59e0b); color: #fff; }
+.code-chip { font-family: 'JetBrains Mono','Fira Code',monospace; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18); border-radius: 12px; padding: .8rem 1rem; font-size: .82rem; color: #a5f3fc; }
+
+.cta-final { background: var(--wb-grad); color: #fff; border-radius: 32px; padding: 3.2rem 2rem; position: relative; overflow: hidden; }
+
+/* ---------- Registro / Checkout ---------- */
+.nda-box { background: #faf5ff; border: 1px solid #e9d5ff; border-left: 4px solid var(--wb-violet); border-radius: 12px; padding: 1rem 1.2rem; max-height: 200px; overflow-y: auto; font-size: .85rem; color: #334155; }
+.dataset-preview-chip { font-family: 'JetBrains Mono','Fira Code',monospace; background: #0b1020; color: #67e8f9; padding: .4rem .8rem; border-radius: 10px; font-size: .85rem; }
+.advisor-btn { border-radius: 16px; border: 2px solid var(--wb-line); background: #fff; color: #1e293b; padding: 1rem 1.25rem; transition: all .2s; cursor: pointer; text-align: left; }
+.advisor-btn:hover { border-color: var(--wb-violet); }
+.advisor-btn.active { border-color: var(--wb-violet); background: var(--wb-soft); box-shadow: 0 8px 20px rgba(124,58,237,.15); }
+
+/* ---------- Login / Mi portal ---------- */
+.login-wrap { min-height: 80vh; display: flex; align-items: center; background: radial-gradient(circle at 20% 10%, #ede9fe, transparent 45%), #fbfaff; }
+.login-card { border-radius: 28px; border: 1px solid var(--wb-line); box-shadow: 0 30px 70px rgba(79,70,229,.15); }
+.kpi { background: #fff; border: 1px solid var(--wb-line); border-radius: 20px; padding: 1.2rem 1.3rem; height: 100%; }
+.kpi .n { font-size: 2rem; font-weight: 900; letter-spacing: -.03em; line-height: 1.1; }
+.bar-track { height: 12px; background: #ede9fe; border-radius: 999px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 999px; background: var(--wb-grad); transition: width .8s ease; }
+.bar-fill.warn { background: var(--wb-grad-warm); }
+.timeline { list-style: none; padding: 0; margin: 0; position: relative; }
+.timeline li { position: relative; padding: 0 0 1.3rem 3rem; }
+.timeline li::before { content: ""; position: absolute; left: 17px; top: 34px; bottom: 0; width: 2px; background: #ddd6fe; }
+.timeline li:last-child::before { display: none; }
+.timeline .dot { position: absolute; left: 0; top: 0; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--wb-grad); color: #fff; }
+.timeline .dot.pending { background: #e2e8f0; color: #64748b; }

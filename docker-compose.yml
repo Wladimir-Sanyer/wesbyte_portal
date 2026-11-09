@@ -1,0 +1,27 @@
+services:
+  portal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: wesbyte-portal-web
+    container_name: wesbyte-portal-app
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8085}:8085"
+    env_file:
+      - .env
+    environment:
+      - PORT=8085
+      - WORKERS=${WORKERS:-2}
+      - TIMEOUT=120
+    volumes:
+      # Montar credenciales de Google Cloud BigQuery
+      - ./.secrets:/app/.secrets:ro
+      # Montar código de la app para reflejar cambios sin recompilar imagen
+      - ./app:/app/app:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8085/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

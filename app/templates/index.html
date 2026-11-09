@@ -1,0 +1,584 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- ============ HERO / MEGA PUBLICIDAD ============ -->
+<section class="hero-portal">
+  <div class="container-xl">
+    <div class="row align-items-center g-5">
+      <div class="col-lg-7">
+        <span class="hero-chip mb-3"><i class="ti ti-flame"></i> ¿Quieres automatizar tus procesos?</span>
+        <h1 class="hero-title mb-3">
+          ¿Cansado de <span class="text-gradient">reprocesos</span>, Excel eternos y clientes que se te olvidan?
+        </h1>
+        <p class="fs-2 mb-4" style="color:rgba(255,255,255,.85);max-width:640px;">
+          Wesbyte trabaja por ti las 24 horas: <strong>avisa a tus clientes por WhatsApp</strong>, los felicita en su cumpleaños,
+          <strong>consulta datos del Estado en segundos</strong> y deja toda tu información ordenada en tu propia base de datos.
+          Menos errores. Más ventas. Más tiempo para ti.
+        </p>
+        <div class="d-flex flex-wrap gap-3 mb-4">
+          <a href="#planes-grid" class="btn btn-warm btn-lg px-4"><i class="ti ti-rocket me-2"></i> Quiero automatizar mi negocio</a>
+          <a href="#calculadora-custom" class="btn btn-outline-light btn-lg px-4"><i class="ti ti-calculator me-2"></i> Arma tu plan</a>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <span class="hero-chip"><i class="ti ti-brand-whatsapp"></i> Alertas automáticas</span>
+          <span class="hero-chip"><i class="ti ti-cake"></i> Cumpleaños que fidelizan</span>
+          <span class="hero-chip"><i class="ti ti-building-bank"></i> Datos estatales al instante</span>
+          <span class="hero-chip"><i class="ti ti-lock"></i> Tu base de datos, solo tuya</span>
+        </div>
+      </div>
+
+      <div class="col-lg-5">
+        <div class="row g-3">
+          <div class="col-6"><div class="hero-stat"><div class="n text-gradient">24/7</div><div class="small mt-1">Tu asistente nunca descansa</div></div></div>
+          <div class="col-6"><div class="hero-stat"><div class="n text-gradient">-80%</div><div class="small mt-1">Menos tareas repetitivas</div></div></div>
+          <div class="col-6"><div class="hero-stat"><div class="n text-gradient">1 día</div><div class="small mt-1">Para estar operando</div></div></div>
+          <div class="col-6"><div class="hero-stat"><div class="n text-gradient">desde $20</div><div class="small mt-1">al mes, sin letras chicas</div></div></div>
+          <div class="col-12">
+            <div class="hero-stat d-flex align-items-center justify-content-between flex-wrap gap-2">
+              <div>
+                <div class="fw-bold">Paga 1 solo año y ahorra 10%</div>
+                <div class="small" style="color:rgba(255,255,255,.75)">o mensual recurrente. Tú eliges.</div>
+              </div>
+              <i class="ti ti-discount-2" style="font-size:2.4rem;color:#fcd34d"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ BENEFICIOS ============ -->
+<section id="beneficios" class="py-5">
+  <div class="container-xl py-3">
+    <div class="text-center mb-5">
+      <h2 class="fw-black display-6" style="font-weight:900;letter-spacing:-.03em;">Deja de perder tiempo y dinero en lo repetitivo</h2>
+      <p class="text-muted fs-3 mb-0">Todo lo que te quita horas cada semana, Wesbyte lo hace solo.</p>
+    </div>
+    <div class="row g-4">
+      <div class="col-md-6 col-lg-3">
+        <div class="pain-card">
+          <div class="icon-bubble bg-grad-1"><i class="ti ti-brand-whatsapp"></i></div>
+          <h4 class="fw-bold">Cero clientes olvidados</h4>
+          <p class="text-muted mb-0">Alertas por WhatsApp a tus clientes en el momento justo. Renovaciones, vencimientos y recordatorios sin mover un dedo.</p>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="pain-card">
+          <div class="icon-bubble bg-grad-4"><i class="ti ti-cake"></i></div>
+          <h4 class="fw-bold">Clientes que te adoran</h4>
+          <p class="text-muted mb-0">Correos de cumpleaños automáticos con tu marca. Fidelizas sin esfuerzo y vuelven a comprarte.</p>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="pain-card">
+          <div class="icon-bubble bg-grad-2"><i class="ti ti-bolt"></i></div>
+          <h4 class="fw-bold">Adiós al copiar y pegar</h4>
+          <p class="text-muted mb-0">Consulta datos estatales (cédula, RUC, placas) en segundos y evita digitar y revisar a mano.</p>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="pain-card">
+          <div class="icon-bubble bg-grad-3"><i class="ti ti-chart-bar"></i></div>
+          <h4 class="fw-bold">Todo en un dashboard</h4>
+          <p class="text-muted mb-0">Entra con tu usuario y mira tus procesos, consumos y seguimiento en tiempo real. Control total.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PLANES ============ -->
+<section id="planes-grid" class="py-5 section-dark">
+  <div class="container-xl py-3" style="position:relative;z-index:1;">
+    <div class="d-flex flex-column align-items-center text-center mb-5">
+      <span class="hero-chip mb-3"><i class="ti ti-sparkles"></i> Elige tu plan</span>
+      <h2 class="display-5 mb-2" style="font-weight:900;letter-spacing:-.03em;">Más grande el plan, <span class="text-gradient">más barato cada uso</span></h2>
+      <p class="fs-3 mb-4" style="color:rgba(255,255,255,.8);max-width:680px;">
+        Paga <strong>1 solo año con 10% de descuento</strong> o con <strong>cobro mensual recurrente</strong>, todo con PayPhone.
+      </p>
+      <div class="toggle-pay">
+        <button type="button" id="btnModoAnual" class="on" onclick="cambiarModalidadVista('anual_unico')"><i class="ti ti-discount-2 me-1"></i> 1 solo pago anual · -10%</button>
+        <button type="button" id="btnModoMensual" onclick="cambiarModalidadVista('mensual_recurrente')"><i class="ti ti-repeat me-1"></i> Mensual recurrente</button>
+      </div>
+    </div>
+
+    <div class="row g-4 align-items-stretch">
+      {% for plan in planes %}
+      <div class="col-lg-4">
+        <div id="card-{{ plan.codigo }}" class="plan-card h-100 d-flex flex-column {% if plan.es_destacado %}plan-gold{% endif %}">
+          {% if plan.es_destacado %}
+          <div class="gold-ribbon"><i class="ti ti-crown me-1"></i> El más conveniente · mejor precio por uso</div>
+          {% endif %}
+          <div class="card-body p-4 d-flex flex-column flex-grow-1">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div>
+                <span class="badge tier-badge-{{ plan.color }} fw-bold mb-2">{{ plan.tier }}</span>
+                <h3 class="fs-1 mb-1" style="font-weight:900;">{{ plan.nombre }}</h3>
+              </div>
+              <span class="badge bg-indigo-lt text-indigo fw-bold">{{ plan.max_usuarios }} {% if plan.max_usuarios == 1 %}usuario{% else %}usuarios{% endif %}</span>
+            </div>
+            <p class="text-muted small mb-3">{{ plan.subtitulo }}</p>
+
+            <div class="price-box mb-4">
+              <div class="precio-vista-anual">
+                <div class="d-flex align-items-baseline gap-2">
+                  <span class="price-number">${{ "%.0f"|format(plan.precio_anual_con_descuento) }}</span>
+                  <span class="text-muted text-decoration-line-through fs-3">${{ "%.0f"|format(plan.precio_anual) }}</span>
+                  <span class="text-muted small">/ año</span>
+                </div>
+                <div class="d-flex align-items-center justify-content-between mt-2 flex-wrap gap-1">
+                  <span class="save-pill">Ahorras ${{ "%.0f"|format(plan.ahorro_anual) }}</span>
+                  <span class="text-muted small">≈ <strong>${{ "%.2f"|format(plan.equivalente_mensual_anual) }}/mes</strong></span>
+                </div>
+              </div>
+              <div class="precio-vista-mensual d-none">
+                <div class="d-flex align-items-baseline gap-2">
+                  <span class="price-number">${{ "%.0f"|format(plan.precio_mensual) }}</span>
+                  <span class="text-muted small">/ mes recurrente</span>
+                </div>
+                <div class="small mt-2" style="color:#b45309;font-weight:700;">
+                  <i class="ti ti-discount-check me-1"></i> Paga el año de una vez por ${{ "%.0f"|format(plan.precio_anual_con_descuento) }} (-10%)
+                </div>
+              </div>
+            </div>
+
+            <ul class="list-unstyled mb-4 flex-grow-1">
+              <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-users"></i></span><span><strong>{{ plan.max_usuarios }}</strong> {% if plan.max_usuarios == 1 %}usuario{% else %}usuarios{% endif %} en tu base de datos</span></li>
+              <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-brand-whatsapp"></i></span><span><strong>{{ plan.limite_mensual_whatsapp }}</strong> alertas por WhatsApp al mes</span></li>
+              <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-cake"></i></span><span><strong>{{ plan.limite_mensual_emails }}</strong> correos de cumpleaños al mes</span></li>
+              <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-building-bank"></i></span><span><strong>{{ plan.limite_mensual_api_ecuador }}</strong> consultas a datos estatales al mes</span></li>
+              <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-database"></i></span><span>Base de datos propia + usuario <code>admin</code></span></li>
+              <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-layout-dashboard"></i></span><span>Dashboard de procesos y seguimiento</span></li>
+              <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-shield-check"></i></span><span>Acuerdo de confidencialidad incluido</span></li>
+            </ul>
+
+            {% if plan.ahorro_por_volumen_pct > 0 %}
+            <div class="save-pill text-center mb-3 py-2"><i class="ti ti-trending-down me-1"></i> Cada uso te sale {{ plan.ahorro_por_volumen_pct }}% más barato que en Prime</div>
+            {% endif %}
+
+            <button type="button" class="btn w-100 py-3 fs-3 {% if plan.es_destacado %}btn-warm{% else %}btn-grad{% endif %}" onclick="abrirModalRegistro('{{ plan.codigo }}')">
+              Quiero {{ plan.nombre }} <i class="ti ti-arrow-right ms-1"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- ============ CALCULADORA ============ -->
+<section id="calculadora-custom" class="py-5">
+  <div class="container-xl py-3">
+    <div class="text-center mb-5">
+      <span class="badge bg-purple-lt text-purple fw-bold mb-2 px-3 py-2"><i class="ti ti-adjustments-horizontal me-1"></i> A TU MEDIDA</span>
+      <h2 class="display-6" style="font-weight:900;letter-spacing:-.03em;">Arma el plan exacto para tu negocio</h2>
+      <p class="text-muted fs-3 mb-0">Mueve los controles y mira tu precio al instante. Si te conviene más Super Gold, te lo decimos.</p>
+    </div>
+
+    <div class="calculator-box p-4 p-lg-5">
+      <div class="row g-5 align-items-start">
+        <div class="col-lg-7">
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label class="form-label fw-bold mb-0"><i class="ti ti-users me-1" style="color:#4f46e5"></i> Usuarios</label>
+              <span class="val-pill" style="background:#4f46e5" id="lblCalcUsuarios">{{ calc_inicial.usuarios }} usuarios</span>
+            </div>
+            <input type="range" class="form-range range-slider" id="rngUsuarios" min="1" max="25" step="1" value="{{ calc_inicial.usuarios }}" oninput="actualizarCalculadora()">
+            <div class="tick-row" data-min="1" data-max="25" data-ticks='[[1,"Prime · 1"],[3,"Silver · 3"],[5,"Gold · 5"],[25,"25"]]'></div>
+          </div>
+
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label class="form-label fw-bold mb-0"><i class="ti ti-brand-whatsapp me-1" style="color:#0891b2"></i> Alertas por WhatsApp al mes</label>
+              <span class="val-pill" style="background:#0891b2" id="lblCalcWhatsapp">{{ calc_inicial.limite_mensual_whatsapp }} / mes</span>
+            </div>
+            <input type="range" class="form-range range-slider" id="rngWhatsapp" min="50" max="1500" step="25" value="{{ calc_inicial.limite_mensual_whatsapp }}" oninput="actualizarCalculadora()">
+            <div class="tick-row" data-min="50" data-max="1500" data-ticks='[[50,"Prime · 50"],[100,"Silver · 100"],[300,"Gold · 300"],[1500,"1.500"]]'></div>
+          </div>
+
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label class="form-label fw-bold mb-0"><i class="ti ti-cake me-1" style="color:#d946ef"></i> Correos de cumpleaños al mes</label>
+              <span class="val-pill" style="background:#c026d3" id="lblCalcEmails">{{ calc_inicial.limite_mensual_emails }} / mes</span>
+            </div>
+            <input type="range" class="form-range range-slider" id="rngEmails" min="50" max="1500" step="25" value="{{ calc_inicial.limite_mensual_emails }}" oninput="actualizarCalculadora()">
+            <div class="tick-row" data-min="50" data-max="1500" data-ticks='[[50,"Prime · 50"],[100,"Silver · 100"],[200,"Gold · 200"],[1500,"1.500"]]'></div>
+          </div>
+
+          <div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label class="form-label fw-bold mb-0"><i class="ti ti-building-bank me-1" style="color:#ea580c"></i> Consultas a datos estatales al mes</label>
+              <span class="val-pill" style="background:#ea580c" id="lblCalcApi">{{ calc_inicial.limite_mensual_api_ecuador }} / mes</span>
+            </div>
+            <input type="range" class="form-range range-slider" id="rngApi" min="50" max="2000" step="25" value="{{ calc_inicial.limite_mensual_api_ecuador }}" oninput="actualizarCalculadora()">
+            <div class="tick-row" data-min="50" data-max="2000" data-ticks='[[50,"Prime · 50"],[200,"Silver · 200"],[400,"Gold · 400"],[2000,"2.000"]]'></div>
+          </div>
+
+          <div class="d-flex flex-wrap gap-2 pt-2 align-items-center">
+            <span class="small text-muted me-1">Empezar desde:</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="cargarPresetCalculadora(1, 50, 50, 50)">Prime</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="cargarPresetCalculadora(3, 100, 100, 200)">Silver</button>
+            <button type="button" class="btn btn-sm btn-warm" onclick="cargarPresetCalculadora(5, 300, 200, 400)">Super Gold</button>
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="cargarPresetCalculadora(8, 500, 400, 700)">Corporativo (8 usr)</button>
+          </div>
+        </div>
+
+        <div class="col-lg-5">
+          <div class="calc-result">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <span class="badge bg-white text-dark fw-bold">TU CONFIGURACIÓN</span>
+              <span class="small" style="color:rgba(255,255,255,.7)">Plan a medida</span>
+            </div>
+            <div class="row g-2 mb-3">
+              <div class="col-6">
+                <div class="calc-cell">
+                  <div class="small" style="color:rgba(255,255,255,.75)">Mensual recurrente</div>
+                  <div class="fs-1 fw-black" style="font-weight:900" id="calcPrecioMensual">${{ "%.2f"|format(calc_inicial.precio_mensual) }}<span class="fs-5 fw-normal">/mes</span></div>
+                  <div class="small" style="color:rgba(255,255,255,.75)" id="calcPrecioAnualSinDesc">${{ "%.2f"|format(calc_inicial.precio_anual) }} al año</div>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="calc-cell hot">
+                  <div class="small fw-bold">1 solo año · -10%</div>
+                  <div class="fs-1" style="font-weight:900" id="calcPrecioAnualDesc">${{ "%.2f"|format(calc_inicial.precio_anual_con_descuento) }}<span class="fs-5 fw-normal">/año</span></div>
+                  <div class="small" id="calcAhorroAnual">Ahorras ${{ "%.2f"|format(calc_inicial.ahorro_anual) }}</div>
+                </div>
+              </div>
+            </div>
+
+            <div id="calcGoldTipBox" class="calc-tip mb-3 {% if not calc_inicial.mensaje_recomendacion %}d-none{% endif %}">
+              <div class="d-flex gap-2">
+                <i class="ti ti-crown fs-2 flex-shrink-0" style="color:#d97706"></i>
+                <div>
+                  <div class="fw-bold small">¡Te conviene más el Super Gold!</div>
+                  <div class="small" id="calcGoldTipText">{{ calc_inicial.mensaje_recomendacion }}</div>
+                  <button type="button" class="btn btn-sm btn-warm mt-2" onclick="abrirModalRegistro('SUPER_GOLD')">Elegir Super Gold · $45/mes</button>
+                </div>
+              </div>
+            </div>
+
+            <button type="button" class="btn btn-warm w-100 py-3 fs-3" onclick="abrirModalRegistro('CUSTOM')">
+              <i class="ti ti-rocket me-1"></i> Contratar este plan
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ INTEGRACIONES + A MEDIDA ============ -->
+<section id="integraciones" class="py-5">
+  <div class="container-xl py-3">
+    <div class="row g-4">
+      <div class="col-lg-6">
+        <div class="feature-panel panel-api">
+          <span class="hero-chip mb-3"><i class="ti ti-api"></i> Integraciones</span>
+          <h3 class="display-6 mb-3" style="font-weight:900;letter-spacing:-.02em;">¿Ya usas otros sistemas? Conectémoslos.</h3>
+          <p class="fs-3" style="color:rgba(255,255,255,.85)">
+            Si tienes otras integraciones, creamos una <strong>API a tu medida</strong> para que tus sistemas accedan a tus datos
+            de forma segura, en tiempo real y sin trabajo manual.
+          </p>
+          <div class="code-chip my-3">GET /api/v1/tus-datos &nbsp;→&nbsp; { "clientes": 1.240, "estado": "sincronizado" }</div>
+          <ul class="list-unstyled mb-0" style="color:rgba(255,255,255,.9)">
+            <li class="mb-1"><i class="ti ti-circle-check me-2" style="color:#67e8f9"></i> Acceso seguro con llave privada</li>
+            <li class="mb-1"><i class="ti ti-circle-check me-2" style="color:#67e8f9"></i> Conecta tu CRM, ERP, web o apps</li>
+            <li><i class="ti ti-circle-check me-2" style="color:#67e8f9"></i> Tus datos siguen siendo 100% tuyos</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="feature-panel panel-custom">
+          <span class="hero-chip mb-3"><i class="ti ti-tools"></i> Hecho a tu medida</span>
+          <h3 class="display-6 mb-3" style="font-weight:900;letter-spacing:-.02em;">¿Necesitas algo especial? Lo construimos.</h3>
+          <p class="fs-3" style="color:rgba(255,255,255,.95)">
+            Si deseas <strong>mejoras ad hoc</strong> para tus procesos y necesidades, <strong>cotízanos</strong>.
+            Somos una empresa <strong>low cost</strong>: soluciones de alto nivel a precios que sí puedes pagar.
+          </p>
+          <div class="d-flex flex-wrap gap-2 mb-4">
+            <span class="hero-chip">Automatizaciones</span><span class="hero-chip">Reportes</span>
+            <span class="hero-chip">Paneles</span><span class="hero-chip">Integraciones</span>
+          </div>
+          <a class="btn btn-light btn-lg fw-bold" style="color:#ea580c"
+             href="mailto:{{ soporte_email }}?subject=Cotizaci%C3%B3n%20de%20mejoras%20a%20medida">
+            <i class="ti ti-message-dollar me-1"></i> Cotizar mi mejora
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CTA FINAL ============ -->
+<section class="pb-5">
+  <div class="container-xl">
+    <div class="cta-final text-center">
+      <h2 class="display-6 mb-2" style="font-weight:900;letter-spacing:-.03em;">Tu competencia ya está automatizando. ¿Y tú?</h2>
+      <p class="fs-3 mb-4" style="color:rgba(255,255,255,.9)">Empieza hoy, estrena tu base de datos propia y recupera horas cada semana.</p>
+      <a href="#planes-grid" class="btn btn-warm btn-lg px-5"><i class="ti ti-rocket me-2"></i> Elegir mi plan</a>
+      <div class="mt-3"><a href="/ingresar" class="text-white small">¿Ya eres cliente? Ingresa a tu portal</a></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ MODAL REGISTRO ============ -->
+<div class="modal modal-blur fade" id="modalRegistro" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:24px;overflow:hidden;">
+      <div class="modal-header text-white py-3" style="background:linear-gradient(135deg,#12163a,#4f46e5)">
+        <div>
+          <span class="badge bg-white text-dark fw-bold mb-1">PASO 2 DE 3 · CREA TU CUENTA</span>
+          <h4 class="modal-title mb-0" style="font-weight:900" id="modalPlanTitulo">Registro</h4>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+
+      <form id="formRegistroTenant" onsubmit="enviarFormularioRegistro(event)">
+        <div class="modal-body p-4">
+          <input type="hidden" id="regPlanCodigo" value="SUPER_GOLD">
+          <input type="hidden" id="regModalidadPreferida" value="anual_unico">
+
+          <div class="mb-4 p-3 d-flex align-items-center justify-content-between flex-wrap gap-2" style="background:#f5f3ff;border-radius:16px;border:1px solid #ddd6fe">
+            <div>
+              <strong id="regResumenPlanNombre"></strong>
+              <div class="small text-muted" id="regResumenPlanLimites"></div>
+            </div>
+            <div class="text-end">
+              <div class="fs-3" style="font-weight:900;color:#4f46e5" id="regResumenPlanPrecio"></div>
+              <div class="small text-muted" id="regResumenPlanSubprecio"></div>
+            </div>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-md-7">
+              <label class="form-label required fw-bold">Nombre de tu empresa</label>
+              <input type="text" class="form-control" id="regNombreEmpresa" required placeholder="Ej: Seguros Águila S.A." oninput="actualizarPreviewDataset()">
+            </div>
+            <div class="col-md-5">
+              <label class="form-label fw-bold">Tu base de datos</label>
+              <div class="dataset-preview-chip d-flex align-items-center justify-content-between mt-1">
+                <strong id="previewDatasetId" style="color:#fcd34d">tuempresa</strong>
+                <span class="badge bg-indigo-lt">Privada</span>
+              </div>
+            </div>
+            <div class="col-md-7">
+              <label class="form-label required fw-bold">Nombres completos</label>
+              <input type="text" class="form-control" id="regNombresCompletos" required placeholder="Ej: Carlos Andrés Mendoza">
+            </div>
+            <div class="col-md-5">
+              <label class="form-label required fw-bold">RUC o Cédula</label>
+              <input type="text" class="form-control" id="regRucCedula" required placeholder="1790012345001" maxlength="13">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label required fw-bold">Correo electrónico</label>
+              <input type="email" class="form-control" id="regCorreo" required placeholder="gerencia@tuempresa.com" oninput="sugerirUsername()">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label required fw-bold">Celular / WhatsApp</label>
+              <input type="tel" class="form-control" id="regCelular" required placeholder="0991234567">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label required fw-bold">Usuario para ingresar</label>
+              <input type="text" class="form-control" id="regUsername" required placeholder="cmendoza">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold">Ciudad / País</label>
+              <input type="text" class="form-control" id="regCiudad" value="Quito, Ecuador">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label required fw-bold">Contraseña</label>
+              <input type="password" class="form-control" id="regPassword" required minlength="6" placeholder="Mínimo 6 caracteres">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label required fw-bold">Confirmar contraseña</label>
+              <input type="password" class="form-control" id="regPasswordConfirm" required minlength="6">
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <label class="form-label fw-bold"><i class="ti ti-shield-lock me-1" style="color:#7c3aed"></i> Acuerdo de confidencialidad de tus datos</label>
+            <div class="nda-box mb-2">
+              <p class="mb-2"><strong>1. Tus datos son tuyos.</strong> Toda la información que guardes en tu base de datos dedicada es de tu exclusiva propiedad.</p>
+              <p class="mb-2"><strong>2. Reserva total.</strong> Wesbyte se compromete a no divulgar, ceder, vender ni usar tu información para fines distintos a prestarte el servicio.</p>
+              <p class="mb-0"><strong>3. ¿Tu empresa exige su propio NDA?</strong> Envíalo a <a href="mailto:{{ soporte_email }}" class="fw-bold">{{ soporte_email }}</a> y nuestro equipo lo firmará.</p>
+            </div>
+            <label class="form-check mb-1">
+              <input type="checkbox" class="form-check-input" id="regAceptaNda" required checked>
+              <span class="form-check-label small fw-semibold">He leído y acepto el acuerdo de confidencialidad.</span>
+            </label>
+            <label class="form-check">
+              <input type="checkbox" class="form-check-input" id="regRequiereNdaFirmado">
+              <span class="form-check-label small text-muted">Enviaré mi propio NDA a <strong>{{ soporte_email }}</strong> para firma de Wesbyte.</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="modal-footer bg-light d-flex justify-content-between">
+          <button type="button" class="btn btn-link text-muted" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" id="btnSubmitRegistro" class="btn btn-warm px-4 py-2 fs-3">Continuar al pago <i class="ti ti-arrow-right ms-1"></i></button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  const PLANES_CATALOGO = {{ planes | tojson }};
+  let vistaModalidadActual = "anual_unico";
+  let ultimoCalculoCustom = {{ calc_inicial | tojson }};
+
+  /* Marcas de los sliders posicionadas en su lugar real (alternando filas para que no se pisen) */
+  function renderTicks() {
+    document.querySelectorAll(".tick-row").forEach(row => {
+      const min = +row.dataset.min, max = +row.dataset.max;
+      JSON.parse(row.dataset.ticks).forEach(([v, label], i) => {
+        const pct = ((v - min) / (max - min)) * 100;
+        const s = document.createElement("span");
+        s.textContent = label;
+        s.className = "r" + (i % 2) + (label.startsWith("Gold") ? " t-gold" : "");
+        s.style.left = pct + "%";
+        s.style.transform = `translateX(-${pct}%)`;
+        row.appendChild(s);
+      });
+    });
+  }
+
+  function cambiarModalidadVista(modalidad) {
+    vistaModalidadActual = modalidad;
+    const a = modalidad === "anual_unico";
+    document.getElementById("btnModoAnual").classList.toggle("on", a);
+    document.getElementById("btnModoMensual").classList.toggle("on", !a);
+    document.querySelectorAll(".precio-vista-anual").forEach(el => el.classList.toggle("d-none", !a));
+    document.querySelectorAll(".precio-vista-mensual").forEach(el => el.classList.toggle("d-none", a));
+    document.getElementById("regModalidadPreferida").value = modalidad;
+  }
+
+  function cargarPresetCalculadora(usr, wa, em, api) {
+    document.getElementById("rngUsuarios").value = usr;
+    document.getElementById("rngWhatsapp").value = wa;
+    document.getElementById("rngEmails").value = em;
+    document.getElementById("rngApi").value = api;
+    actualizarCalculadora();
+  }
+
+  async function actualizarCalculadora() {
+    const usuarios = parseInt(document.getElementById("rngUsuarios").value, 10);
+    const whatsapp_mensual = parseInt(document.getElementById("rngWhatsapp").value, 10);
+    const emails_mensual = parseInt(document.getElementById("rngEmails").value, 10);
+    const api_ecuador_mensual = parseInt(document.getElementById("rngApi").value, 10);
+
+    document.getElementById("lblCalcUsuarios").textContent = `${usuarios} ${usuarios === 1 ? 'usuario' : 'usuarios'}`;
+    document.getElementById("lblCalcWhatsapp").textContent = `${whatsapp_mensual} / mes`;
+    document.getElementById("lblCalcEmails").textContent = `${emails_mensual} / mes`;
+    document.getElementById("lblCalcApi").textContent = `${api_ecuador_mensual} / mes`;
+
+    try {
+      const resp = await fetch("/api/calcular-plan", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usuarios, whatsapp_mensual, emails_mensual, api_ecuador_mensual })
+      });
+      const json = await resp.json();
+      if (json.success && json.data) {
+        const d = json.data;
+        ultimoCalculoCustom = d;
+        document.getElementById("calcPrecioMensual").innerHTML = `$${d.precio_mensual.toFixed(2)}<span class="fs-5 fw-normal">/mes</span>`;
+        document.getElementById("calcPrecioAnualSinDesc").textContent = `$${d.precio_anual.toFixed(2)} al año`;
+        document.getElementById("calcPrecioAnualDesc").innerHTML = `$${d.precio_anual_con_descuento.toFixed(2)}<span class="fs-5 fw-normal">/año</span>`;
+        document.getElementById("calcAhorroAnual").textContent = `Ahorras $${d.ahorro_anual.toFixed(2)}`;
+        const box = document.getElementById("calcGoldTipBox");
+        if (d.mensaje_recomendacion) {
+          box.classList.remove("d-none");
+          document.getElementById("calcGoldTipText").textContent = d.mensaje_recomendacion;
+        } else { box.classList.add("d-none"); }
+      }
+    } catch (e) { console.error("Error calculando plan:", e); }
+  }
+
+  function actualizarPreviewDataset() {
+    const raw = document.getElementById("regNombreEmpresa").value || "";
+    const n = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, "").replace(/[^a-z0-9_]/g, "");
+    document.getElementById("previewDatasetId").textContent = n || "tuempresa";
+  }
+
+  function sugerirUsername() {
+    const correo = document.getElementById("regCorreo").value || "";
+    const u = document.getElementById("regUsername");
+    if (!u.dataset.touched && correo.includes("@")) u.value = correo.split("@")[0].toLowerCase().replace(/[^a-z0-9._-]/g, "");
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    renderTicks();
+    const u = document.getElementById("regUsername");
+    if (u) u.addEventListener("input", () => { u.dataset.touched = "true"; });
+  });
+
+  function abrirModalRegistro(codigoPlan) {
+    document.getElementById("regPlanCodigo").value = codigoPlan;
+    document.getElementById("regModalidadPreferida").value = vistaModalidadActual;
+    let nombre = "Plan a tu medida", limites = "", anual = 0, mensual = 0;
+    if (codigoPlan === "CUSTOM") {
+      const c = ultimoCalculoCustom;
+      limites = `${c.usuarios} usuarios · ${c.limite_mensual_whatsapp} WhatsApp · ${c.limite_mensual_emails} correos · ${c.limite_mensual_api_ecuador} consultas estatales / mes`;
+      anual = c.precio_anual_con_descuento; mensual = c.precio_mensual;
+    } else {
+      const p = PLANES_CATALOGO.find(i => i.codigo === codigoPlan) || PLANES_CATALOGO[2];
+      nombre = `${p.nombre} (${p.tier})`;
+      limites = `${p.max_usuarios} ${p.max_usuarios === 1 ? 'usuario' : 'usuarios'} · ${p.limite_mensual_whatsapp} WhatsApp · ${p.limite_mensual_emails} correos · ${p.limite_mensual_api_ecuador} consultas estatales / mes`;
+      anual = p.precio_anual_con_descuento; mensual = p.precio_mensual;
+    }
+    document.getElementById("modalPlanTitulo").textContent = `Crea tu cuenta · ${nombre}`;
+    document.getElementById("regResumenPlanNombre").textContent = nombre;
+    document.getElementById("regResumenPlanLimites").textContent = limites;
+    document.getElementById("regResumenPlanPrecio").textContent = `$${anual.toFixed(2)} / año (-10%)`;
+    document.getElementById("regResumenPlanSubprecio").textContent = `o $${mensual.toFixed(2)} / mes recurrente`;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById("modalRegistro")).show();
+  }
+
+  async function enviarFormularioRegistro(event) {
+    event.preventDefault();
+    const pw = document.getElementById("regPassword").value;
+    if (pw !== document.getElementById("regPasswordConfirm").value) {
+      Swal.fire("Contraseñas no coinciden", "Verifica que ambas sean iguales.", "warning");
+      return;
+    }
+    const btn = document.getElementById("btnSubmitRegistro");
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span> Creando tu cuenta...`;
+
+    const planCodigo = document.getElementById("regPlanCodigo").value;
+    const payload = {
+      plan_codigo: planCodigo,
+      modalidad_pago: document.getElementById("regModalidadPreferida").value,
+      nombre_empresa: document.getElementById("regNombreEmpresa").value.trim(),
+      nombres_completos: document.getElementById("regNombresCompletos").value.trim(),
+      ruc_cedula: document.getElementById("regRucCedula").value.trim(),
+      correo: document.getElementById("regCorreo").value.trim(),
+      celular: document.getElementById("regCelular").value.trim(),
+      username: document.getElementById("regUsername").value.trim(),
+      ciudad: document.getElementById("regCiudad").value.trim(),
+      password: pw,
+      requiere_nda_personalizado: document.getElementById("regRequiereNdaFirmado").checked,
+      custom_params: planCodigo === "CUSTOM" ? {
+        usuarios: ultimoCalculoCustom.usuarios,
+        whatsapp_mensual: ultimoCalculoCustom.limite_mensual_whatsapp,
+        emails_mensual: ultimoCalculoCustom.limite_mensual_emails,
+        api_ecuador_mensual: ultimoCalculoCustom.limite_mensual_api_ecuador
+      } : null
+    };
+    try {
+      const resp = await fetch("/api/registro", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const json = await resp.json();
+      if (!resp.ok || !json.success) throw new Error(json.detail || "No se pudo completar el registro");
+      window.location.href = json.checkout_url;
+    } catch (err) {
+      Swal.fire("No pudimos registrarte", err.message, "error");
+      btn.disabled = false; btn.innerHTML = original;
+    }
+  }
+</script>
+{% endblock %}
