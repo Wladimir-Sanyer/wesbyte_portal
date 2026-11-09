@@ -140,7 +140,7 @@ TARIFAS_CALCULADORA = {
     "base_plataforma_mensual": 10.00,      # Incluye infraestructura dedicada BigQuery + 1er usuario
     "costo_usuario_extra_mensual": 5.50,   # Por cada usuario adicional (> 1)
     "costo_whatsapp_unitario": 0.08,       # Por mensaje WhatsApp alerta mensual ($4 por cada 50)
-    "costo_email_unitario": 0.05,          # Por correo cumpleaños mensual ($2.50 por cada 50)
+    "costo_email_unitario": 0.05,          # Por correo y notificación mensual ($2.50 por cada 50)
     "costo_api_ecuador_unitario": 0.07,    # Por consulta API estatal mensual ($3.50 por cada 50)
     "descuento_anual_pct": 10.0,
 }
@@ -227,13 +227,13 @@ def calcular_plan_personalizado(
         ahorro_vs_custom = round((precio_mensual_suelto - 45.00) * 12, 2)
         if ahorro_vs_custom > 0:
             mensaje_recomendacion = (
-                f"¡El Plan Super Gold te incluye 5 usuarios, 300 WhatsApp, 200 Correos y 400 consultas API "
+                f"¡El Plan Super Gold te incluye 5 usuarios, 300 WhatsApp, 200 correos/notificaciones y 400 consultas API "
                 f"por solo $45/mes ($486/año con descuento), ahorrándote ${ahorro_vs_custom:.2f} al año frente a armarlo por separado!"
             )
         else:
             mensaje_recomendacion = (
                 "Por solo unos dólares más al mes, el Plan Super Gold te entrega 5 usuarios, 300 WhatsApp, "
-                "200 correos y 400 consultas API estatales."
+                "200 correos/notificaciones y 400 consultas API estatales."
             )
     elif cabe_en_silver and precio_mensual_final > 30.00:
         mensaje_recomendacion = (

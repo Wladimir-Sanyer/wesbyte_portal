@@ -2,27 +2,34 @@
 
 Aplicación web desarrollada en **Python (FastAPI + Gunicorn/Uvicorn + Google Cloud BigQuery + PayPhone)** para la comercialización, personalización de planes, cobro y aprovisionamiento automático de entornos Multi-Tenant en el proyecto `broker-pmp`.
 
-Corre por defecto en el **puerto `8085`** para convivir sin conflicto con `broker-pmp-app` (`8080`).
+Corre por defecto en el **puerto `8085`** como contenedor Docker individual (`portal-wesbyte`).
 
-## Ejecución con Docker (Local y VM)
+## Ejecución con Docker (Sin docker-compose)
+
+Para compilar y correr directamente con Docker:
 
 ```bash
-docker compose up -d --build
+# 1. Construir la imagen
+docker build -t portal-wesbyte .
+
+# 2. Levantar el contenedor
+docker run -d \
+  --name portal-wesbyte \
+  --restart unless-stopped \
+  -p 8085:8085 \
+  --env-file .env \
+  -v $(pwd)/.secrets:/app/.secrets:ro \
+  portal-wesbyte
 ```
 
 - **Portal Comercial**: `http://localhost:8085`
-- **Panel de Tenants (`wesbytes`)**: `http://localhost:8085/panel-clientes`
 - **Healthcheck**: `http://localhost:8085/health`
 
 ## Automatización CI/CD con GitHub Actions (`.github/workflows/deploy.yml`)
 
-Cada `push` o `pull_request` a la rama `main` ejecuta:
-1. **Job `validate`**:
-   - Verifica sintaxis de Python (`compileall`).
-   - Valida catálogo de los 3 planes, calculadora proporcional, normalización de nombre de dataset (minúscula, sin espacios ni tildes) y configuración de cobro PayPhone.
-   - Construye la imagen Docker para asegurar que el `Dockerfile` no tenga errores.
-2. **Job `deploy`** *(al hacer push a `main`)*:
-   - Se conecta por SSH al VPS de Contabo y despliega en `/opt/wesbyte_portal` (configurable con `CONTABO_PORTAL_DIR`) en el puerto `8085` sin afectar el contenedor `broker-pmp-app` del puerto `8080`.
+Cada `push` a la rama `main` ejecuta:
+1. **Validación**: sintaxis Python, lógica de planes, calculadora y build de Docker.
+2. **Despliegue directo por SSH**: en `/opt/wesbyte_portal` ejecuta `docker build` y `docker run -d --name portal-wesbyte -p 8085:8085 ...`.
 
 ### Secrets requeridos en el repositorio de GitHub
 - `CONTABO_HOST`: IP del servidor VPS

@@ -11,7 +11,7 @@
           ¿Cansado de <span class="text-gradient">reprocesos</span>, Excel eternos y clientes que se te olvidan?
         </h1>
         <p class="fs-2 mb-4" style="color:rgba(255,255,255,.85);max-width:640px;">
-          Wesbyte trabaja por ti las 24 horas: <strong>avisa a tus clientes por WhatsApp</strong>, los felicita en su cumpleaños,
+          Wesbyte trabaja por ti las 24 horas: <strong>avisa a tus clientes por WhatsApp</strong>, envía <strong>correos y notificaciones personalizadas</strong> (cumpleaños, avisos de vencimiento, cobranza y seguimiento),
           <strong>consulta datos del Estado en segundos</strong> y deja toda tu información ordenada en tu propia base de datos.
           Menos errores. Más ventas. Más tiempo para ti.
         </p>
@@ -21,7 +21,7 @@
         </div>
         <div class="d-flex flex-wrap gap-2">
           <span class="hero-chip"><i class="ti ti-brand-whatsapp"></i> Alertas automáticas</span>
-          <span class="hero-chip"><i class="ti ti-cake"></i> Cumpleaños que fidelizan</span>
+          <span class="hero-chip"><i class="ti ti-mail"></i> Correos y notificaciones personalizadas</span>
           <span class="hero-chip"><i class="ti ti-building-bank"></i> Datos estatales al instante</span>
           <span class="hero-chip"><i class="ti ti-lock"></i> Tu base de datos, solo tuya</span>
         </div>
@@ -65,9 +65,9 @@
       </div>
       <div class="col-md-6 col-lg-3">
         <div class="pain-card">
-          <div class="icon-bubble bg-grad-4"><i class="ti ti-cake"></i></div>
-          <h4 class="fw-bold">Clientes que te adoran</h4>
-          <p class="text-muted mb-0">Correos de cumpleaños automáticos con tu marca. Fidelizas sin esfuerzo y vuelven a comprarte.</p>
+          <div class="icon-bubble bg-grad-4"><i class="ti ti-mail"></i></div>
+          <h4 class="fw-bold">Comunicación que vende</h4>
+          <p class="text-muted mb-0">Correos y notificaciones automáticas con tu marca: cumpleaños, avisos de vencimiento, cobranza, promociones y seguimiento que multiplican tus ventas.</p>
         </div>
       </div>
       <div class="col-md-6 col-lg-3">
@@ -146,7 +146,7 @@
             <ul class="list-unstyled mb-4 flex-grow-1">
               <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-users"></i></span><span><strong>{{ plan.max_usuarios }}</strong> {% if plan.max_usuarios == 1 %}usuario{% else %}usuarios{% endif %} en tu base de datos</span></li>
               <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-brand-whatsapp"></i></span><span><strong>{{ plan.limite_mensual_whatsapp }}</strong> alertas por WhatsApp al mes</span></li>
-              <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-cake"></i></span><span><strong>{{ plan.limite_mensual_emails }}</strong> correos de cumpleaños al mes</span></li>
+              <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-mail"></i></span><span><strong>{{ plan.limite_mensual_emails }}</strong> correos y notificaciones personalizadas al mes <small class="text-muted">(cumpleaños, avisos y cobranza)</small></span></li>
               <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-building-bank"></i></span><span><strong>{{ plan.limite_mensual_api_ecuador }}</strong> consultas a datos estatales al mes</span></li>
               <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-database"></i></span><span>Base de datos propia + usuario <code>admin</code></span></li>
               <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-layout-dashboard"></i></span><span>Dashboard de procesos y seguimiento</span></li>
@@ -200,7 +200,7 @@
 
           <div class="mb-4">
             <div class="d-flex justify-content-between align-items-center mb-1">
-              <label class="form-label fw-bold mb-0"><i class="ti ti-cake me-1" style="color:#d946ef"></i> Correos de cumpleaños al mes</label>
+              <label class="form-label fw-bold mb-0"><i class="ti ti-mail me-1" style="color:#d946ef"></i> Correos y notificaciones personalizadas al mes <small class="text-muted fw-normal">(cumpleaños, avisos y cobranza)</small></label>
               <span class="val-pill" style="background:#c026d3" id="lblCalcEmails">{{ calc_inicial.limite_mensual_emails }} / mes</span>
             </div>
             <input type="range" class="form-range range-slider" id="rngEmails" min="50" max="1500" step="25" value="{{ calc_inicial.limite_mensual_emails }}" oninput="actualizarCalculadora()">
@@ -522,12 +522,12 @@
     let nombre = "Plan a tu medida", limites = "", anual = 0, mensual = 0;
     if (codigoPlan === "CUSTOM") {
       const c = ultimoCalculoCustom;
-      limites = `${c.usuarios} usuarios · ${c.limite_mensual_whatsapp} WhatsApp · ${c.limite_mensual_emails} correos · ${c.limite_mensual_api_ecuador} consultas estatales / mes`;
+      limites = `${c.usuarios} usuarios · ${c.limite_mensual_whatsapp} WhatsApp · ${c.limite_mensual_emails} correos y notificaciones · ${c.limite_mensual_api_ecuador} consultas estatales / mes`;
       anual = c.precio_anual_con_descuento; mensual = c.precio_mensual;
     } else {
       const p = PLANES_CATALOGO.find(i => i.codigo === codigoPlan) || PLANES_CATALOGO[2];
       nombre = `${p.nombre} (${p.tier})`;
-      limites = `${p.max_usuarios} ${p.max_usuarios === 1 ? 'usuario' : 'usuarios'} · ${p.limite_mensual_whatsapp} WhatsApp · ${p.limite_mensual_emails} correos · ${p.limite_mensual_api_ecuador} consultas estatales / mes`;
+      limites = `${p.max_usuarios} ${p.max_usuarios === 1 ? 'usuario' : 'usuarios'} · ${p.limite_mensual_whatsapp} WhatsApp · ${p.limite_mensual_emails} correos y notificaciones · ${p.limite_mensual_api_ecuador} consultas estatales / mes`;
       anual = p.precio_anual_con_descuento; mensual = p.precio_mensual;
     }
     document.getElementById("modalPlanTitulo").textContent = `Crea tu cuenta · ${nombre}`;

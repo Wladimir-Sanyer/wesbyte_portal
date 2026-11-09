@@ -56,7 +56,7 @@ jobs:
 
       - name: Validar construcción de imagen Docker
         run: |
-          docker build -t wesbyte-portal-web:ci-check .
+          docker build -t portal-wesbyte:ci-check .
 
   deploy:
     name: Despliegue en Contabo VPS (Puerto 8085)
@@ -87,12 +87,23 @@ jobs:
               cp .env.example .env
             fi
 
-            echo "Reconstruyendo y levantando contenedor wesbyte-portal-app en puerto 8085..."
-            docker compose down || true
-            docker compose up -d --build
+            echo "Construyendo imagen portal-wesbyte..."
+            docker build -t portal-wesbyte .
+
+            echo "Reiniciando contenedor portal-wesbyte..."
+            docker stop portal-wesbyte || true
+            docker rm portal-wesbyte || true
+
+            docker run -d \
+              --name portal-wesbyte \
+              --restart unless-stopped \
+              -p 8085:8085 \
+              --env-file .env \
+              -v "$APP_DIR/.secrets:/app/.secrets:ro" \
+              portal-wesbyte
 
             echo "Limpiando imágenes antiguas en desuso..."
             docker image prune -f
 
-            echo "Verificando contenedores activos (broker-pmp-app en 8080 y wesbyte-portal-app en 8085)..."
-            docker ps
+            echo "Verificando contenedor portal-wesbyte..."
+            docker ps --filter "name=portal-wesbyte"
