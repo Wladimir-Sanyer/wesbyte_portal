@@ -102,6 +102,12 @@ jobs:
               -v "$APP_DIR/.secrets:/app/.secrets:ro" \
               portal-wesbyte
 
+            echo "Conectando portal-wesbyte a la red de whatsapp_api..."
+            WA_NET=$(docker inspect whatsapp_api --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}' 2>/dev/null || true)
+            if [ -n "$WA_NET" ]; then
+              docker network connect "$WA_NET" portal-wesbyte || true
+            fi
+
             echo "Limpiando imágenes antiguas en desuso..."
             docker image prune -f
 

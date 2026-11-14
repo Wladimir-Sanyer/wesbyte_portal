@@ -15,6 +15,7 @@ from app.database import get_bq_client
 logger = logging.getLogger("wesbyte_portal.notificaciones_config")
 
 PLANTILLA_VARIABLES: List[Dict[str, str]] = [
+    {"key": "nombres_completos_razon_social", "label": "Nombres / Razón Social", "ejemplo": "María Fernanda López"},
     {"key": "cedula", "label": "Cédula", "ejemplo": "0912345678"},
     {"key": "numero_contrato", "label": "Número de contrato", "ejemplo": "POL-2026-00451"},
     {"key": "fecha_vigencia", "label": "Fecha de vigencia", "ejemplo": "15/12/2026"},

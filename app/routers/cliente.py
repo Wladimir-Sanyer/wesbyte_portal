@@ -29,6 +29,8 @@ from app.config import (
 from app.database import append_rows, execute_query, get_bq_client, get_next_id, hash_password, verify_password
 from app.services.email_service import EmailService, EmailServiceError
 from app.services.google_drive_service import GoogleDriveService, GoogleDriveServiceError
+from app.services.onboarding_service import registrar_intento_pago_payphone
+from app.services.payphone_service import build_payphone_box_config, generate_client_tx_id
 from app.services.notificaciones_config_service import (
     get_cliente_notificaciones_y_plantillas,
     save_cliente_notificaciones_habilitadas,
@@ -87,6 +89,11 @@ def _enviar_correo_credenciales(
         if es_reset
         else f"Tu cuenta ha sido creada en <strong>{empresa}</strong>."
     )
+    boton_url = (
+        "https://wesbyte.app/actualizar-password"
+        if es_reset
+        else f"{WESBYTE_APP_URL.rstrip('/')}/actualizar-password"
+    )
     html_body = f"""
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">
       <div style="background: linear-gradient(135deg, #12163a, #4f46e5); padding: 28px 24px; color: #ffffff;">
@@ -104,7 +111,7 @@ def _enviar_correo_credenciales(
           <strong>Importante:</strong> Por tu seguridad, al iniciar sesión por primera vez con esta contraseña temporal, el sistema te solicitará actualizarla por una contraseña personal.
         </p>
         <div style="margin-top: 22px; text-align: center;">
-          <a href="{WESBYTE_APP_URL}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 24px;border-radius:10px;">Ir a Wesbyte</a>
+          <a href="{boton_url}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 24px;border-radius:10px;">Actualizar contraseña</a>
         </div>
       </div>
     </div>
@@ -115,7 +122,7 @@ def _enviar_correo_credenciales(
         f"Usuario (Correo): {to_email}\n"
         f"Contraseña Temporal: {temp_password}\n\n"
         f"En tu primer ingreso se te solicitará actualizar tu contraseña.\n"
-        f"Acceso: {WESBYTE_APP_URL}\n"
+        f"Actualizar contraseña: {boton_url}\n"
     )
     try:
         EmailService().send_email(
@@ -648,13 +655,22 @@ def _dashboard(cid: int) -> Optional[Dict[str, Any]]:
 
     # Usuarios en usuarios_app (con roles de supervisor, actualizador, visualizador y permisos de seguros)
     try:
-        usuarios_app = _rows(f"""
+        usuarios_app_raw = _rows(f"""
             SELECT id, cliente_id, username, nombre_completo, email, celular, permiso, dataset_id, activo,
                    permisos_seguros, ultimo_login, IFNULL(login_count, 0) AS login_count, created_at
             FROM `{P}.{W}.usuarios_app`
             WHERE cliente_id=@cid
             ORDER BY id ASC
         """, cp)
+        seen_users = set()
+        usuarios_app = []
+        for u_row in usuarios_app_raw:
+            key = (u_row.get("email") or u_row.get("username") or "").strip().lower()
+            if key and key in seen_users:
+                continue
+            if key:
+                seen_users.add(key)
+            usuarios_app.append(u_row)
     except Exception:
         usuarios_app = []
 
@@ -924,109 +940,190 @@ async def api_cancelar_suscripcion(request: Request, payload: Dict[str, Any] = B
         raise HTTPException(status_code=500, detail=f"No se pudo procesar la cancelación: {str(exc)}")
 
 
-@router.post("/api/suscripcion/mejorar")
-async def api_mejorar_suscripcion(request: Request, payload: Dict[str, Any] = Body(...)):
-    """Permite al cliente subir de plan o agregar usuarios adicionales a su cuenta."""
+def _calcular_upgrade_diferencia(
+    cid: int,
+    cli: Dict[str, Any],
+    tipo: str,
+    nuevo_plan_codigo: str = "",
+    usuarios_adicionales: int = 1,
+) -> Dict[str, Any]:
+    """Calcula el crédito no consumido del plan actual y la diferencia neta a pagar por upgrade."""
+    cp = [bigquery.ScalarQueryParameter("cid", "INT64", cid)]
+    sus_rows = _rows(
+        f"""
+        SELECT id, plan_id, modalidad_pago, monto_total_cobrado, fecha_inicio, fecha_fin, estado
+        FROM `{P}.{W}.suscripciones`
+        WHERE cliente_id=@cid AND estado IN ('activa', 'por_vencer')
+        ORDER BY id DESC LIMIT 1
+        """,
+        cp,
+    )
+    sus = sus_rows[0] if sus_rows else {}
+
+    plan_actual_id = int(cli.get("plan_id") or sus.get("plan_id") or 1)
+    plan_actual = next((p for p in PLANES_OFICIALES if p["id"] == plan_actual_id), PLANES_OFICIALES[0])
+
+    today = datetime.date.today()
+    f_ini = sus.get("fecha_inicio")
+    f_fin = sus.get("fecha_fin")
+    if isinstance(f_ini, datetime.datetime):
+        f_ini = f_ini.date()
+    if isinstance(f_fin, datetime.datetime):
+        f_fin = f_fin.date()
+
+    if f_ini and f_fin and f_fin > f_ini:
+        dias_totales = max(1, (f_fin - f_ini).days)
+        dias_restantes = max(1, min(dias_totales, (f_fin - today).days))
+    else:
+        dias_totales = 365
+        dias_restantes = 365
+
+    monto_pagado_actual = float(sus.get("monto_total_cobrado") or plan_actual["precio_anual_con_descuento"])
+    credito_actual = round(monto_pagado_actual * (dias_restantes / dias_totales), 2)
+
+    if tipo == "cambio_plan":
+        codigo = str(nuevo_plan_codigo or "").strip().upper()
+        nuevo_plan = next((p for p in PLANES_OFICIALES if p["codigo"] == codigo), None)
+        if not nuevo_plan:
+            raise HTTPException(status_code=400, detail="Plan no válido.")
+        if nuevo_plan["id"] <= plan_actual_id:
+            raise HTTPException(status_code=400, detail="Solo puedes subir a un plan superior al actual.")
+
+        # Valor proporcional del nuevo plan para los días restantes (base anual con descuento)
+        costo_nuevo_periodo = round(float(nuevo_plan["precio_anual_con_descuento"]) * (dias_restantes / 365.0), 2)
+        diferencia = round(costo_nuevo_periodo - credito_actual, 2)
+        if diferencia < 1.00:
+            diferencia = 1.00
+
+        msi_meses = 6 if diferencia > 250 else 3
+        return {
+            "tipo": "cambio_plan",
+            "modalidad_pago": "upgrade_plan",
+            "plan_id": int(nuevo_plan["id"]),
+            "plan_actual_nombre": plan_actual["nombre"],
+            "nuevo_plan_codigo": nuevo_plan["codigo"],
+            "nuevo_plan_nombre": nuevo_plan["nombre"],
+            "dias_totales": dias_totales,
+            "dias_restantes": dias_restantes,
+            "monto_pagado_actual": round(monto_pagado_actual, 2),
+            "credito_actual": credito_actual,
+            "costo_nuevo_periodo": costo_nuevo_periodo,
+            "diferencia_usd": diferencia,
+            "msi_meses": msi_meses,
+            "cuota_msi": round(diferencia / msi_meses, 2),
+            "descripcion": f"Upgrade a {nuevo_plan['nombre']} ({dias_restantes} días restantes)",
+        }
+
+    elif tipo == "agregar_usuarios":
+        adicionales = int(usuarios_adicionales or 1)
+        if adicionales < 1:
+            raise HTTPException(status_code=400, detail="Cantidad de usuarios inválida.")
+        costo_anual_unidad = round(6.00 * 12 * 0.90, 2)  # $64.80/año por usuario
+        costo_nuevo_periodo = round(adicionales * costo_anual_unidad * (dias_restantes / 365.0), 2)
+        diferencia = max(1.00, costo_nuevo_periodo)
+        msi_meses = 6 if diferencia > 250 else 3
+        return {
+            "tipo": "agregar_usuarios",
+            "modalidad_pago": "mejora_usuarios",
+            "plan_id": plan_actual_id,
+            "plan_actual_nombre": plan_actual["nombre"],
+            "usuarios_adicionales": adicionales,
+            "dias_totales": dias_totales,
+            "dias_restantes": dias_restantes,
+            "monto_pagado_actual": round(monto_pagado_actual, 2),
+            "credito_actual": 0.0,
+            "costo_nuevo_periodo": costo_nuevo_periodo,
+            "diferencia_usd": diferencia,
+            "msi_meses": msi_meses,
+            "cuota_msi": round(diferencia / msi_meses, 2),
+            "descripcion": f"+{adicionales} usuarios adicionales ({dias_restantes} días restantes)",
+        }
+
+    raise HTTPException(status_code=400, detail="Tipo de mejora no soportado.")
+
+
+@router.post("/api/suscripcion/upgrade/preview")
+async def api_upgrade_preview(request: Request, payload: Dict[str, Any] = Body(...)):
+    """Calcula el desglose prorrateado para subir de plan o agregar usuarios."""
     sesion = get_sesion(request)
     if not sesion or not sesion.get("cid"):
         raise HTTPException(status_code=401, detail="No autorizado.")
 
     cid = int(sesion["cid"])
-    tipo = str(payload.get("tipo", "")).strip()  # 'cambio_plan' o 'agregar_usuarios'
-    client = get_bq_client()
-    now_ts = datetime.datetime.now(datetime.timezone.utc)
+    cli_rows = _rows(f"SELECT * FROM `{P}.{W}.clientes` WHERE id=@cid LIMIT 1",
+                     [bigquery.ScalarQueryParameter("cid", "INT64", cid)])
+    if not cli_rows:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado.")
 
+    resumen = _calcular_upgrade_diferencia(
+        cid=cid,
+        cli=cli_rows[0],
+        tipo=str(payload.get("tipo", "cambio_plan")).strip(),
+        nuevo_plan_codigo=str(payload.get("nuevo_plan_codigo", "")),
+        usuarios_adicionales=int(payload.get("usuarios_adicionales", 1)),
+    )
+    return {"success": True, "resumen": resumen}
+
+
+@router.post("/api/suscripcion/upgrade/intent")
+async def api_upgrade_intent(request: Request, payload: Dict[str, Any] = Body(...)):
+    """Genera una intención de pago real en PayPhone para pagar la diferencia del upgrade."""
+    sesion = get_sesion(request)
+    if not sesion or not sesion.get("cid"):
+        raise HTTPException(status_code=401, detail="No autorizado.")
+
+    cid = int(sesion["cid"])
     cli_rows = _rows(f"SELECT * FROM `{P}.{W}.clientes` WHERE id=@cid LIMIT 1",
                      [bigquery.ScalarQueryParameter("cid", "INT64", cid)])
     if not cli_rows:
         raise HTTPException(status_code=404, detail="Cliente no encontrado.")
     cli = cli_rows[0]
 
-    if tipo == "agregar_usuarios":
-        adicionales = int(payload.get("usuarios_adicionales", 1))
-        if adicionales < 1:
-            raise HTTPException(status_code=400, detail="Cantidad de usuarios inválida.")
-        nuevo_max = int(cli.get("max_usuarios", 1)) + adicionales
-        costo_mensual = adicionales * 6.00
-        costo_anual = round(costo_mensual * 12 * 0.90, 2)
+    resumen = _calcular_upgrade_diferencia(
+        cid=cid,
+        cli=cli,
+        tipo=str(payload.get("tipo", "cambio_plan")).strip(),
+        nuevo_plan_codigo=str(payload.get("nuevo_plan_codigo", "")),
+        usuarios_adicionales=int(payload.get("usuarios_adicionales", 1)),
+    )
 
-        client.query(f"""
-            UPDATE `{P}.{W}.clientes`
-            SET max_usuarios = {nuevo_max}
-            WHERE id = {cid}
-        """).result()
+    client_tx_id = generate_client_tx_id(cid, "UPG")
+    registrar_intento_pago_payphone(
+        cliente_id=cid,
+        plan_id=resumen["plan_id"],
+        modalidad_pago=resumen["modalidad_pago"],
+        client_transaction_id=client_tx_id,
+        monto_usd=resumen["diferencia_usd"],
+        metadata={
+            "tipo": resumen["tipo"],
+            "nuevo_plan_codigo": resumen.get("nuevo_plan_codigo", ""),
+            "usuarios_adicionales": resumen.get("usuarios_adicionales", 0),
+            "credito_actual": resumen["credito_actual"],
+            "costo_nuevo_periodo": resumen["costo_nuevo_periodo"],
+            "diferencia_usd": resumen["diferencia_usd"],
+            "dias_restantes": resumen["dias_restantes"],
+        },
+    )
 
-        pago_id = get_next_id("pagos_payphone", WESBYTES_DATASET_ID)
-        pago_row = {
-            "id": pago_id,
-            "cliente_id": cid,
-            "suscripcion_id": None,
-            "plan_id": int(cli.get("plan_id", 1)),
-            "modalidad_pago": "mejora_usuarios",
-            "client_transaction_id": f"UPG-USR-{cid}-{uuid.uuid4().hex[:6].upper()}",
-            "payphone_transaction_id": f"PP-UPG-{uuid.uuid4().hex[:6].upper()}",
-            "authorization_code": "AUTH-UPG-OK",
-            "monto_centavos": int(costo_anual * 100),
-            "monto_usd": Decimal(f"{costo_anual:.2f}"),
-            "estado_pago": "APPROVED",
-            "metodo_pago": "PAYPHONE",
-            "respuesta_raw_json": json.dumps({"tipo": "usuarios_adicionales", "cantidad": adicionales, "nuevo_max": nuevo_max}),
-            "created_at": now_ts,
-            "confirmed_at": now_ts,
-        }
-        append_rows(WESBYTES_DATASET_ID, "pagos_payphone", [pago_row])
+    box_config = build_payphone_box_config(
+        client_tx_id=client_tx_id,
+        monto_usd=resumen["diferencia_usd"],
+        descripcion=resumen["descripcion"],
+        email=str(cli.get("email") or sesion.get("sub") or "cliente@wesbyte.app"),
+        celular=str(cli.get("celular") or "0999999999"),
+        documento=str(cli.get("ruc_cedula") or "9999999999"),
+        modalidad_pago=resumen["modalidad_pago"],
+    )
+    return {"success": True, "resumen": resumen, "box_config": box_config}
 
-        return {"success": True, "message": f"Se han agregado {adicionales} usuarios adicionales a tu cuenta. Total permitido: {nuevo_max} usuarios."}
 
-    elif tipo == "cambio_plan":
-        nuevo_codigo = str(payload.get("nuevo_plan_codigo", "")).strip().upper()
-        nuevo_plan = next((p for p in PLANES_OFICIALES if p["codigo"] == nuevo_codigo), None)
-        if not nuevo_plan:
-            raise HTTPException(status_code=400, detail="Plan no válido.")
-
-        client.query(f"""
-            UPDATE `{P}.{W}.clientes`
-            SET plan_id = {nuevo_plan['id']},
-                max_usuarios = {nuevo_plan['max_usuarios']},
-                limite_mensual_whatsapp = {nuevo_plan['limite_mensual_whatsapp']},
-                limite_mensual_emails = {nuevo_plan['limite_mensual_emails']},
-                limite_mensual_api_ecuador = {nuevo_plan['limite_mensual_api_ecuador']}
-            WHERE id = {cid}
-        """).result()
-
-        client.query(f"""
-            UPDATE `{P}.{W}.suscripciones`
-            SET plan_id = {nuevo_plan['id']},
-                monto_subtotal = {Decimal(str(nuevo_plan['precio_anual']))},
-                descuento_aplicado = {Decimal(str(nuevo_plan['ahorro_anual']))},
-                monto_total_cobrado = {Decimal(str(nuevo_plan['precio_anual_con_descuento']))},
-                updated_at = CURRENT_TIMESTAMP()
-            WHERE cliente_id = {cid} AND estado IN ('activa', 'por_vencer')
-        """).result()
-
-        pago_id = get_next_id("pagos_payphone", WESBYTES_DATASET_ID)
-        pago_row = {
-            "id": pago_id,
-            "cliente_id": cid,
-            "suscripcion_id": None,
-            "plan_id": nuevo_plan["id"],
-            "modalidad_pago": "upgrade_plan",
-            "client_transaction_id": f"UPG-PLAN-{cid}-{uuid.uuid4().hex[:6].upper()}",
-            "payphone_transaction_id": f"PP-UPG-{uuid.uuid4().hex[:6].upper()}",
-            "authorization_code": "AUTH-UPG-OK",
-            "monto_centavos": int(nuevo_plan["precio_anual_con_descuento"] * 100),
-            "monto_usd": Decimal(f"{nuevo_plan['precio_anual_con_descuento']:.2f}"),
-            "estado_pago": "APPROVED",
-            "metodo_pago": "PAYPHONE",
-            "respuesta_raw_json": json.dumps({"tipo": "upgrade_plan", "nuevo_plan": nuevo_plan["nombre"]}),
-            "created_at": now_ts,
-            "confirmed_at": now_ts,
-        }
-        append_rows(WESBYTES_DATASET_ID, "pagos_payphone", [pago_row])
-
-        return {"success": True, "message": f"¡Tu plan ha sido actualizado a {nuevo_plan['nombre']} exitosamente!"}
-
-    raise HTTPException(status_code=400, detail="Tipo de mejora no soportado.")
+@router.post("/api/suscripcion/mejorar")
+async def api_mejorar_suscripcion(request: Request, payload: Dict[str, Any] = Body(...)):
+    """Redirige al flujo obligatorio de pago real con PayPhone."""
+    raise HTTPException(
+        status_code=400,
+        detail="Las mejoras de plan o usuarios deben pagarse a través de PayPhone (/api/suscripcion/upgrade/intent).",
+    )
 
 
 @router.post("/api/usuarios-app/crear")
@@ -1495,14 +1592,16 @@ async def api_whatsapp_conectar(request: Request):
         if exc.status_code == 409:
             wa = WhatsAppClient()
             estado = await wa.get_status(cliente_id)
+            phone = estado.get("phone_connected")
+            tel_txt = f" (+{phone})" if phone else ""
             return {
                 "success": True,
                 "requires_qr": True,
                 "already_connected": True,
                 "connection_status": "connected",
-                "phone_connected": estado.get("phone_connected"),
+                "phone_connected": phone,
                 "instance_name": estado.get("instance_name"),
-                "message": "Tu WhatsApp ya se encuentra conectado.",
+                "message": f"Tu WhatsApp ya se encuentra conectado{tel_txt}. Primero cierra la conexión actual en tu dispositivo (Dispositivos vinculados) si deseas generar otro código QR.",
             }
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     except Exception as exc:

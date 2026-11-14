@@ -253,7 +253,7 @@ def buscar_intento_pago_payphone(client_transaction_id: str) -> Optional[Dict[st
     if not clean_tx:
         return None
     df = get_query(f"""
-        SELECT id, cliente_id, plan_id, modalidad_pago, monto_usd, estado_pago
+        SELECT id, cliente_id, plan_id, modalidad_pago, monto_usd, estado_pago, respuesta_raw_json
         FROM `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.pagos_payphone`
         WHERE client_transaction_id = '{clean_tx}'
         ORDER BY id DESC
@@ -262,6 +262,81 @@ def buscar_intento_pago_payphone(client_transaction_id: str) -> Optional[Dict[st
     if df.empty:
         return None
     return df.iloc[0].to_dict()
+
+
+def completar_upgrade_payphone(
+    cliente_id: int,
+    intento: Dict[str, Any],
+    payment_info: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Confirma un pago de upgrade de plan o usuarios adicionales y actualiza límites en BigQuery."""
+    from app.config import PLANES_OFICIALES
+
+    client_tx = str(payment_info.get("client_transaction_id") or "").replace("'", "''")
+    pp_tx_id = str(payment_info.get("payphone_transaction_id") or "").replace("'", "''")
+    auth_code = str(payment_info.get("authorization_code") or "").replace("'", "''")
+    raw_meta = {}
+    try:
+        raw_meta = json.loads(intento.get("respuesta_raw_json") or "{}")
+    except Exception:
+        raw_meta = {}
+
+    raw_full = json.dumps(
+        {"intento": raw_meta, "payphone": payment_info.get("raw") or {}},
+        ensure_ascii=False,
+    ).replace("'", "''")
+
+    execute_query(f"""
+        UPDATE `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.pagos_payphone`
+        SET estado_pago = 'APPROVED',
+            payphone_transaction_id = '{pp_tx_id}',
+            authorization_code = '{auth_code}',
+            respuesta_raw_json = '{raw_full}',
+            confirmed_at = CURRENT_TIMESTAMP()
+        WHERE client_transaction_id = '{client_tx}'
+    """)
+
+    modalidad = str(intento.get("modalidad_pago") or "")
+    monto_pagado = float(intento.get("monto_usd") or 0.0)
+
+    if modalidad == "upgrade_plan":
+        nuevo_codigo = str(raw_meta.get("nuevo_plan_codigo") or "").strip().upper()
+        nuevo_plan = next((p for p in PLANES_OFICIALES if p["codigo"] == nuevo_codigo), None)
+        if not nuevo_plan:
+            pid = int(intento.get("plan_id") or 0)
+            nuevo_plan = next((p for p in PLANES_OFICIALES if p["id"] == pid), None)
+        if nuevo_plan:
+            execute_query(f"""
+                UPDATE `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.clientes`
+                SET plan_id = {nuevo_plan['id']},
+                    max_usuarios = {nuevo_plan['max_usuarios']},
+                    limite_mensual_whatsapp = {nuevo_plan['limite_mensual_whatsapp']},
+                    limite_mensual_emails = {nuevo_plan['limite_mensual_emails']},
+                    limite_mensual_api_ecuador = {nuevo_plan['limite_mensual_api_ecuador']}
+                WHERE id = {int(cliente_id)}
+            """)
+            execute_query(f"""
+                UPDATE `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.suscripciones`
+                SET plan_id = {nuevo_plan['id']},
+                    monto_total_cobrado = IFNULL(monto_total_cobrado, 0) + NUMERIC '{monto_pagado:.2f}',
+                    updated_at = CURRENT_TIMESTAMP()
+                WHERE cliente_id = {int(cliente_id)} AND estado IN ('activa', 'por_vencer')
+            """)
+    elif modalidad == "mejora_usuarios":
+        adicionales = max(1, int(raw_meta.get("usuarios_adicionales") or 1))
+        execute_query(f"""
+            UPDATE `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.clientes`
+            SET max_usuarios = IFNULL(max_usuarios, 1) + {adicionales}
+            WHERE id = {int(cliente_id)}
+        """)
+        execute_query(f"""
+            UPDATE `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.suscripciones`
+            SET monto_total_cobrado = IFNULL(monto_total_cobrado, 0) + NUMERIC '{monto_pagado:.2f}',
+                updated_at = CURRENT_TIMESTAMP()
+            WHERE cliente_id = {int(cliente_id)} AND estado IN ('activa', 'por_vencer')
+        """)
+
+    return {"success": True, "modalidad": modalidad, "monto_pagado": monto_pagado}
 
 
 def marcar_intento_pago_rechazado(
@@ -461,28 +536,39 @@ def complete_payment_and_provision(
 
     # 4b. Registrar al cliente como administrador en wesbyte.administracion.usuarios_app (usuario = correo)
     permisos_all = "registros_medicos,registros_vehiculares,registros_vida_e_inversion,registros_ramos_generales"
-    usuario_app_id = get_next_id("usuarios_app", WESBYTES_DATASET_ID)
     correo_admin = str(registration_data.get("correo") or username or "").strip().lower()
-    usuarios_app_rows = [
-        {
-            "id": usuario_app_id,
-            "cliente_id": cliente_id,
-            "username": correo_admin,
-            "nombre_completo": str(registration_data.get("nombres_completos") or correo_admin),
-            "email": correo_admin,
-            "celular": str(registration_data.get("celular") or ""),
-            "password_hash": pw_hash,
-            "permiso": "administrador",
-            "dataset_id": dataset_id,
-            "activo": True,
-            "permisos_seguros": permisos_all,
-            "ultimo_login": None,
-            "login_count": 0,
-            "created_at": now_ts,
-            "updated_at": now_ts,
-        }
-    ]
-    append_rows(WESBYTES_DATASET_ID, "usuarios_app", usuarios_app_rows)
+    correo_sql = correo_admin.replace("'", "''")
+    existing_ua = get_query(
+        f"""
+        SELECT id
+        FROM `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.usuarios_app`
+        WHERE cliente_id = {cliente_id}
+          AND (LOWER(TRIM(email)) = '{correo_sql}' OR LOWER(TRIM(username)) = '{correo_sql}')
+        LIMIT 1
+        """
+    )
+    if existing_ua.empty:
+        usuario_app_id = get_next_id("usuarios_app", WESBYTES_DATASET_ID)
+        usuarios_app_rows = [
+            {
+                "id": usuario_app_id,
+                "cliente_id": cliente_id,
+                "username": correo_admin,
+                "nombre_completo": str(registration_data.get("nombres_completos") or correo_admin),
+                "email": correo_admin,
+                "celular": str(registration_data.get("celular") or ""),
+                "password_hash": pw_hash,
+                "permiso": "administrador",
+                "dataset_id": dataset_id,
+                "activo": True,
+                "permisos_seguros": permisos_all,
+                "ultimo_login": None,
+                "login_count": 0,
+                "created_at": now_ts,
+                "updated_at": now_ts,
+            }
+        ]
+        append_rows(WESBYTES_DATASET_ID, "usuarios_app", usuarios_app_rows)
 
     # 5. Clonar dataset prototipo -> wesbyte.<dataset_id> con tablas vacías + usuarios en maestra_usuarios_app
     provisioning_result = clone_broker_pmp_dataset_empty(

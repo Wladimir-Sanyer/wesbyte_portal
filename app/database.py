@@ -544,6 +544,8 @@ def clone_broker_pmp_dataset_empty(
     source_items = list(client.list_tables(source_ds_ref))
 
     # Paso 1: Clonar todas las tablas físicas vacías (CREATE TABLE IF NOT EXISTS ... LIKE ...)
+    # y copiar los datos iniciales de las tablas maestras de catálogo (aseguradoras y planes)
+    seed_tables = {"maestra_aseguradora", "maestra_aseguradoras", "maestra_planes"}
     for item in source_items:
         full_source_table = f"{source_ds_ref}.{item.table_id}"
         tbl_meta = client.get_table(full_source_table)
@@ -551,6 +553,15 @@ def clone_broker_pmp_dataset_empty(
             ddl = f"CREATE TABLE IF NOT EXISTS `{target_ds_ref}.{item.table_id}` LIKE `{full_source_table}`"
             execute_query(ddl)
             cloned_tables.append(item.table_id)
+            if item.table_id in seed_tables:
+                try:
+                    cnt_df = get_query(f"SELECT COUNT(1) AS cnt FROM `{target_ds_ref}.{item.table_id}`")
+                    if cnt_df.empty or int(cnt_df.iloc[0]["cnt"]) == 0:
+                        execute_query(
+                            f"INSERT INTO `{target_ds_ref}.{item.table_id}` SELECT * FROM `{full_source_table}`"
+                        )
+                except Exception as exc:
+                    logger.warning(f"Advertencia copiando datos iniciales de {item.table_id} a {target_dataset_id}: {exc}")
 
     # Paso 2: Recrear todas las vistas apuntando al nuevo dataset
     for item in source_items:

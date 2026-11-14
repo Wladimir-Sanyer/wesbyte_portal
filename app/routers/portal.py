@@ -44,6 +44,7 @@ from app.services.onboarding_service import (
     registrar_intento_pago_payphone,
     buscar_intento_pago_payphone,
     marcar_intento_pago_rechazado,
+    completar_upgrade_payphone,
 )
 from app.services.payphone_service import (
     generate_client_tx_id,
@@ -486,6 +487,8 @@ async def payphone_redirect_callback(
     modalidad = str(intento["modalidad_pago"]) if intento and intento.get("modalidad_pago") else "pago_unico_1_year"
 
     if intento and str(intento.get("estado_pago") or "").upper() == "APPROVED" and cliente_id:
+        if modalidad in ("upgrade_plan", "mejora_usuarios"):
+            return RedirectResponse(url="/mi-portal?upgrade=ok", status_code=302)
         return RedirectResponse(url=f"/exito/{cliente_id}", status_code=302)
 
     # Respaldo en caso de que el tx_id viniera de un flujo anterior sin registro previo
@@ -500,8 +503,9 @@ async def payphone_redirect_callback(
     if not cliente_id:
         return RedirectResponse(url="/", status_code=302)
 
-    reg_data = _recover_checkout_from_bq(cliente_id)
-    if not reg_data:
+    es_upgrade = modalidad in ("upgrade_plan", "mejora_usuarios")
+    reg_data = None if es_upgrade else _recover_checkout_from_bq(cliente_id)
+    if not es_upgrade and not reg_data:
         return RedirectResponse(url="/", status_code=302)
 
     if PAYPHONE_TOKEN:
@@ -512,7 +516,8 @@ async def payphone_redirect_callback(
                 payphone_transaction_id=str(id),
                 raw=confirmation.get("raw", {}),
             )
-            return RedirectResponse(url=f"/checkout/{cliente_id}?error=rejected", status_code=302)
+            err_url = "/mi-portal?upgrade=rejected" if es_upgrade else f"/checkout/{cliente_id}?error=rejected"
+            return RedirectResponse(url=err_url, status_code=302)
         payment_info = {
             "payphone_transaction_id": confirmation.get("payphone_transaction_id"),
             "client_transaction_id": clientTransactionId,
@@ -530,6 +535,14 @@ async def payphone_redirect_callback(
             "subscription_token": "",
             "raw": {"id": id, "clientTransactionId": clientTransactionId, "transactionStatus": "Approved"},
         }
+
+    if es_upgrade and intento:
+        completar_upgrade_payphone(
+            cliente_id=cliente_id,
+            intento=intento,
+            payment_info=payment_info,
+        )
+        return RedirectResponse(url="/mi-portal?upgrade=ok", status_code=302)
 
     result = complete_payment_and_provision(
         registration_data=reg_data,
