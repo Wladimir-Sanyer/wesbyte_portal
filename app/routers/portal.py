@@ -41,6 +41,9 @@ from app.services.onboarding_service import (
     register_tenant_and_user,
     complete_payment_and_provision,
     get_plan_by_code_or_id,
+    registrar_intento_pago_payphone,
+    buscar_intento_pago_payphone,
+    marcar_intento_pago_rechazado,
 )
 from app.services.payphone_service import (
     generate_client_tx_id,
@@ -332,6 +335,48 @@ async def checkout_page(
     )
 
 
+@router.post("/api/checkout/intent")
+async def api_create_checkout_intent(payload: Dict[str, Any] = Body(...)):
+    """
+    Genera un nuevo clientTransactionId único para cada intento de pago (carga, recarga o cambio de período),
+    lo registra con estado 'pending' en `wesbyte.administracion.pagos_payphone` y devuelve la configuración
+    fresca para inicializar `PPaymentButtonBox`.
+    """
+    cliente_id = int(payload.get("cliente_id") or 0)
+    if cliente_id <= 0:
+        raise HTTPException(status_code=400, detail="cliente_id inválido.")
+
+    reg_data = _recover_checkout_from_bq(cliente_id)
+    if not reg_data:
+        raise HTTPException(status_code=404, detail="Registro de cliente no encontrado.")
+
+    periodo = normalizar_periodo(payload.get("periodo"))
+    plan = reg_data["plan"]
+    m = calcular_montos_periodo(float(plan["precio_anual"]), periodo)
+    tx_id = generate_client_tx_id(cliente_id, periodo)
+    modalidad_pago = f"pago_unico_{periodo}"
+
+    registrar_intento_pago_payphone(
+        cliente_id=cliente_id,
+        plan_id=int(plan["id"]),
+        modalidad_pago=modalidad_pago,
+        client_transaction_id=tx_id,
+        monto_usd=m["total"],
+        metadata={"plan_codigo": plan.get("codigo"), "periodo": periodo},
+    )
+
+    box_config = build_payphone_box_config(
+        client_tx_id=tx_id,
+        monto_usd=m["total"],
+        descripcion=f"Wesbyte {plan['nombre']} - {m['label']} - {reg_data['nombre_empresa']}",
+        email=reg_data["correo"],
+        celular=reg_data["celular"],
+        documento=reg_data["ruc_cedula"],
+        modalidad_pago=modalidad_pago,
+    )
+    return {"success": True, "box_config": box_config, "monto": m}
+
+
 @router.post("/api/checkout/confirm")
 async def api_confirm_payment_and_provision(payload: Dict[str, Any] = Body(...)):
     """
@@ -435,27 +480,22 @@ async def payphone_redirect_callback(
     if not id or not clientTransactionId:
         return RedirectResponse(url="/", status_code=302)
 
-    # Extraer cliente_id del clientTransactionId (formato WB<cliente_id>1Y..., 2Y..., 3Y...)
-    cliente_id = None
-    modalidad = "pago_unico_1_year"
-    if clientTransactionId.startswith("WB"):
+    # 1. Buscar la transacción en pagos_payphone por clientTransactionId
+    intento = buscar_intento_pago_payphone(clientTransactionId)
+    cliente_id = int(intento["cliente_id"]) if intento and intento.get("cliente_id") else None
+    modalidad = str(intento["modalidad_pago"]) if intento and intento.get("modalidad_pago") else "pago_unico_1_year"
+
+    if intento and str(intento.get("estado_pago") or "").upper() == "APPROVED" and cliente_id:
+        return RedirectResponse(url=f"/exito/{cliente_id}", status_code=302)
+
+    # Respaldo en caso de que el tx_id viniera de un flujo anterior sin registro previo
+    if not cliente_id and clientTransactionId.startswith("WB"):
         rest = clientTransactionId[2:]
-        if "3Y" in rest:
-            modalidad = "pago_unico_3_years"
-            num_part = rest.split("3Y")[0]
-        elif "2Y" in rest:
-            modalidad = "pago_unico_2_years"
-            num_part = rest.split("2Y")[0]
-        elif "1Y" in rest:
-            modalidad = "pago_unico_1_year"
-            num_part = rest.split("1Y")[0]
-        elif "AN" in rest:
-            modalidad = "pago_unico_1_year"
-            num_part = rest.split("AN")[0]
-        else:
-            num_part = ""
-        if num_part.isdigit():
-            cliente_id = int(num_part)
+        for tag, mod in (("3Y", "pago_unico_3_years"), ("2Y", "pago_unico_2_years"), ("1Y", "pago_unico_1_year"), ("AN", "pago_unico_1_year")):
+            if tag in rest and rest.split(tag)[0].isdigit():
+                cliente_id = int(rest.split(tag)[0])
+                modalidad = mod
+                break
 
     if not cliente_id:
         return RedirectResponse(url="/", status_code=302)
@@ -467,6 +507,11 @@ async def payphone_redirect_callback(
     if PAYPHONE_TOKEN:
         confirmation = await confirm_payphone_transaction(id, clientTransactionId)
         if not confirmation.get("approved"):
+            marcar_intento_pago_rechazado(
+                clientTransactionId,
+                payphone_transaction_id=str(id),
+                raw=confirmation.get("raw", {}),
+            )
             return RedirectResponse(url=f"/checkout/{cliente_id}?error=rejected", status_code=302)
         payment_info = {
             "payphone_transaction_id": confirmation.get("payphone_transaction_id"),

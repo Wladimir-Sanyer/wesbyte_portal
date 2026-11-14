@@ -317,6 +317,8 @@
   const MONTOS_POR_PERIODO = {{ periodos_montos_json | safe }};
 
   let periodoSeleccionado = "{{ periodo_inicial or '1_year' }}";
+  let intentoActivoConfig = null;
+  let _ppIntentSeq = 0;
 
   function seleccionarPeriodoCheckout(periodo) {
     periodoSeleccionado = ["1_year", "2_years", "3_years"].includes(periodo) ? periodo : "1_year";
@@ -345,7 +347,38 @@
     lblTotalValor.textContent = `$${m.total.toFixed(2)} USD`;
     document.querySelectorAll(".lblMontoBoton").forEach(el => el.textContent = `$${m.total.toFixed(2)}`);
 
-    renderizarCajitaOficialPayphone();
+    solicitarIntentoPagoYRenderizar(periodoSeleccionado);
+  }
+
+  async function solicitarIntentoPagoYRenderizar(periodo) {
+    const seq = ++_ppIntentSeq;
+    const container = document.getElementById("pp-button");
+    if (container) {
+      container.innerHTML = `<div class="text-muted small py-2"><span class="spinner-border spinner-border-sm me-2"></span>Preparando pasarela PayPhone...</div>`;
+    }
+    try {
+      const resp = await fetch("/api/checkout/intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ cliente_id: CLIENTE_ID, periodo })
+      });
+      const json = await resp.json();
+      if (seq !== _ppIntentSeq) return;
+      if (resp.ok && json.success && json.box_config) {
+        intentoActivoConfig = json.box_config;
+        _ppRenderAttempts = 0;
+        renderizarCajitaOficialPayphone();
+        return;
+      }
+    } catch (e) {
+      console.warn("No se pudo generar nueva intención de pago:", e);
+    }
+    if (seq === _ppIntentSeq) {
+      intentoActivoConfig = BOXES_POR_PERIODO[periodo] || BOXES_POR_PERIODO["1_year"];
+      _ppRenderAttempts = 0;
+      renderizarCajitaOficialPayphone();
+    }
   }
 
   function actualizarEstadoCajitaPayphone() {
@@ -364,7 +397,7 @@
 
   let _ppRenderAttempts = 0;
   function renderizarCajitaOficialPayphone() {
-    const cfg = BOXES_POR_PERIODO[periodoSeleccionado] || BOXES_POR_PERIODO["1_year"];
+    const cfg = intentoActivoConfig || BOXES_POR_PERIODO[periodoSeleccionado] || BOXES_POR_PERIODO["1_year"];
     const token = (document.getElementById("customPayphoneToken")?.value || cfg.token || "").trim();
     const storeId = (document.getElementById("customPayphoneStoreId")?.value || cfg.storeId || "").trim();
     const container = document.getElementById("pp-button");
@@ -468,8 +501,16 @@
     seleccionarPeriodoCheckout(periodoSeleccionado);
     actualizarEstadoCajitaPayphone();
   });
+  window.addEventListener("pageshow", (ev) => {
+    if (ev.persisted) {
+      solicitarIntentoPagoYRenderizar(periodoSeleccionado);
+      actualizarEstadoCajitaPayphone();
+    }
+  });
   window.addEventListener("load", () => {
-    renderizarCajitaOficialPayphone();
+    if (intentoActivoConfig) {
+      renderizarCajitaOficialPayphone();
+    }
     actualizarEstadoCajitaPayphone();
   });
 </script>

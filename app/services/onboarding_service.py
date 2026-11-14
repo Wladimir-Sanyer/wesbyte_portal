@@ -215,6 +215,75 @@ def register_tenant_and_user(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def registrar_intento_pago_payphone(
+    cliente_id: int,
+    plan_id: int,
+    modalidad_pago: str,
+    client_transaction_id: str,
+    monto_usd: float,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> int:
+    """Registra una intención de pago pendiente en wesbyte.administracion.pagos_payphone."""
+    now_ts = datetime.datetime.now(datetime.timezone.utc)
+    pago_id = get_next_id("pagos_payphone", WESBYTES_DATASET_ID)
+    pago_row = {
+        "id": pago_id,
+        "cliente_id": int(cliente_id),
+        "suscripcion_id": None,
+        "plan_id": int(plan_id),
+        "modalidad_pago": str(modalidad_pago),
+        "client_transaction_id": str(client_transaction_id),
+        "payphone_transaction_id": None,
+        "authorization_code": None,
+        "monto_centavos": int(round(float(monto_usd) * 100)),
+        "monto_usd": Decimal(f"{float(monto_usd):.2f}"),
+        "estado_pago": "pending",
+        "metodo_pago": "PAYPHONE_BOX",
+        "respuesta_raw_json": json.dumps(metadata or {}, ensure_ascii=False),
+        "created_at": now_ts,
+        "confirmed_at": None,
+    }
+    append_rows(WESBYTES_DATASET_ID, "pagos_payphone", [pago_row])
+    return pago_id
+
+
+def buscar_intento_pago_payphone(client_transaction_id: str) -> Optional[Dict[str, Any]]:
+    """Busca un intento de pago en wesbyte.administracion.pagos_payphone por su client_transaction_id."""
+    clean_tx = str(client_transaction_id or "").strip().replace("'", "''")
+    if not clean_tx:
+        return None
+    df = get_query(f"""
+        SELECT id, cliente_id, plan_id, modalidad_pago, monto_usd, estado_pago
+        FROM `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.pagos_payphone`
+        WHERE client_transaction_id = '{clean_tx}'
+        ORDER BY id DESC
+        LIMIT 1
+    """)
+    if df.empty:
+        return None
+    return df.iloc[0].to_dict()
+
+
+def marcar_intento_pago_rechazado(
+    client_transaction_id: str,
+    payphone_transaction_id: Optional[str] = None,
+    raw: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Marca un intento de pago como REJECTED en wesbyte.administracion.pagos_payphone."""
+    clean_tx = str(client_transaction_id or "").strip().replace("'", "''")
+    if not clean_tx:
+        return
+    clean_pp = str(payphone_transaction_id or "").replace("'", "''")
+    clean_raw = json.dumps(raw or {}, ensure_ascii=False).replace("'", "''")
+    execute_query(f"""
+        UPDATE `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.pagos_payphone`
+        SET estado_pago = 'REJECTED',
+            payphone_transaction_id = '{clean_pp}',
+            respuesta_raw_json = '{clean_raw}'
+        WHERE client_transaction_id = '{clean_tx}'
+    """)
+
+
 def complete_payment_and_provision(
     registration_data: Dict[str, Any],
     modalidad_pago: str,
@@ -281,26 +350,63 @@ def complete_payment_and_provision(
     }
     append_rows(WESBYTES_DATASET_ID, "suscripciones", [suscripcion_row])
 
-    # 2. Registrar el pago en wesbyte.administracion.pagos_payphone
-    pago_id = get_next_id("pagos_payphone", WESBYTES_DATASET_ID)
-    pago_row = {
-        "id": pago_id,
-        "cliente_id": cliente_id,
-        "suscripcion_id": suscripcion_id,
-        "plan_id": plan_id,
-        "modalidad_pago": modalidad_pago,
-        "client_transaction_id": str(payment_info.get("client_transaction_id", "")),
-        "payphone_transaction_id": str(payment_info.get("payphone_transaction_id", "")),
-        "authorization_code": str(payment_info.get("authorization_code", "AUTH-OK")),
-        "monto_centavos": int(round(monto_total * 100)),
-        "monto_usd": Decimal(f"{monto_total:.2f}"),
-        "estado_pago": "APPROVED",
-        "metodo_pago": str(payment_info.get("metodo_pago", "PAYPHONE")),
-        "respuesta_raw_json": json.dumps(payment_info.get("raw", {}), ensure_ascii=False),
-        "created_at": now_ts,
-        "confirmed_at": now_ts,
-    }
-    append_rows(WESBYTES_DATASET_ID, "pagos_payphone", [pago_row])
+    # 2. Registrar o actualizar el pago en wesbyte.administracion.pagos_payphone
+    tx_id = str(payment_info.get("client_transaction_id", "")).strip()
+    pp_tx_id = str(payment_info.get("payphone_transaction_id", "")).strip()
+    auth_code = str(payment_info.get("authorization_code", "AUTH-OK")).strip()
+    metodo_pago = str(payment_info.get("metodo_pago", "PAYPHONE")).strip()
+    raw_json = json.dumps(payment_info.get("raw", {}), ensure_ascii=False)
+
+    existing_pago = pd.DataFrame()
+    if tx_id:
+        clean_tx = tx_id.replace("'", "''")
+        existing_pago = get_query(f"""
+            SELECT id FROM `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.pagos_payphone`
+            WHERE client_transaction_id = '{clean_tx}'
+            LIMIT 1
+        """)
+
+    if not existing_pago.empty:
+        pago_id = int(existing_pago.iloc[0]["id"])
+        clean_pp = pp_tx_id.replace("'", "''")
+        clean_auth = auth_code.replace("'", "''")
+        clean_met = metodo_pago.replace("'", "''")
+        clean_raw = raw_json.replace("'", "''")
+        execute_query(f"""
+            UPDATE `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.pagos_payphone`
+            SET suscripcion_id = {suscripcion_id},
+                plan_id = {plan_id},
+                modalidad_pago = '{modalidad_pago.replace("'", "''")}',
+                payphone_transaction_id = '{clean_pp}',
+                authorization_code = '{clean_auth}',
+                monto_centavos = {int(round(monto_total * 100))},
+                monto_usd = NUMERIC '{monto_total:.2f}',
+                estado_pago = 'APPROVED',
+                metodo_pago = '{clean_met}',
+                respuesta_raw_json = '{clean_raw}',
+                confirmed_at = CURRENT_TIMESTAMP()
+            WHERE id = {pago_id}
+        """)
+    else:
+        pago_id = get_next_id("pagos_payphone", WESBYTES_DATASET_ID)
+        pago_row = {
+            "id": pago_id,
+            "cliente_id": cliente_id,
+            "suscripcion_id": suscripcion_id,
+            "plan_id": plan_id,
+            "modalidad_pago": modalidad_pago,
+            "client_transaction_id": tx_id,
+            "payphone_transaction_id": pp_tx_id,
+            "authorization_code": auth_code,
+            "monto_centavos": int(round(monto_total * 100)),
+            "monto_usd": Decimal(f"{monto_total:.2f}"),
+            "estado_pago": "APPROVED",
+            "metodo_pago": metodo_pago,
+            "respuesta_raw_json": raw_json,
+            "created_at": now_ts,
+            "confirmed_at": now_ts,
+        }
+        append_rows(WESBYTES_DATASET_ID, "pagos_payphone", [pago_row])
 
     # 3. Actualizar estado del cliente a 'activo' en wesbyte.administracion.clientes
     try:

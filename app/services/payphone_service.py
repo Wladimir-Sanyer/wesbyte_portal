@@ -1,5 +1,7 @@
 import uuid
 import json
+import time
+import secrets
 import datetime
 import logging
 from typing import Dict, Any, Optional
@@ -16,20 +18,25 @@ from app.config import (
 logger = logging.getLogger("wesbyte_portal.payphone")
 
 
-def generate_client_tx_id(cliente_id: int, periodo: str = "1_year") -> str:
+def _to_base36(num: int) -> str:
+    alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    if num <= 0:
+        return "0"
+    chars = []
+    while num:
+        num, rem = divmod(num, 36)
+        chars.append(alphabet[rem])
+    return "".join(reversed(chars))
+
+
+def generate_client_tx_id(cliente_id: int = 0, periodo: str = "1_year") -> str:
     """
-    Genera un identificador único de transacción (máx 15 caracteres alfanuméricos para PayPhone).
-    Codifica el periodo de pago único: 1Y (1 año), 2Y (2 años), 3Y (3 años).
+    Genera un identificador único de transacción por cada intento de pago (máx 15 caracteres alfanuméricos).
+    Formato: 'WB' + timestamp en ms en base36 + 3 caracteres aleatorios [A-Z0-9].
     """
-    p = str(periodo or "1_year").lower()
-    if "3_year" in p or p == "3y":
-        prefix = "3Y"
-    elif "2_year" in p or p == "2y":
-        prefix = "2Y"
-    else:
-        prefix = "1Y"
-    short_uid = uuid.uuid4().hex[:8].upper()
-    return f"WB{cliente_id}{prefix}{short_uid}"[:15]
+    ts_b36 = _to_base36(int(time.time() * 1000))
+    rand_suffix = "".join(secrets.choice("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ") for _ in range(3))
+    return f"WB{ts_b36}{rand_suffix}"[:15]
 
 
 def build_payphone_box_config(
