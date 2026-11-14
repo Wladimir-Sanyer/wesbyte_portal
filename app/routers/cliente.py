@@ -287,8 +287,6 @@ async def actualizar_password_page(request: Request):
     sesion = get_sesion(request)
     if not sesion:
         return RedirectResponse("/ingresar", status_code=302)
-    if sesion.get("must_change_pw"):
-        return RedirectResponse("/actualizar-password", status_code=302)
     return templates.TemplateResponse(
         request=request,
         name="actualizar_password.html",

@@ -70,6 +70,7 @@ def build_payphone_box_config(
     else:
         phone_formatted = "+593999999999"
 
+    msi_max = 6 if float(monto_usd) > 250 else 3
     return {
         "token": token,
         "storeId": store_id,
@@ -88,8 +89,8 @@ def build_payphone_box_config(
         "identificationType": 1 if len(documento or "") == 10 else 2,
         "modalidad_pago": modalidad_pago,
         "es_recurrente": False,
-        "meses_sin_intereses_max": 3,
-        "modalidades_diferido": ["corriente", "3_msi"],
+        "meses_sin_intereses_max": msi_max,
+        "modalidades_diferido": ["corriente", "3_msi", "6_msi"] if msi_max == 6 else ["corriente", "3_msi"],
         "monto_usd": round(float(monto_usd), 2),
         "sandbox_mode": PAYPHONE_SANDBOX_MODE or not bool(token),
         "redirect_url": PAYPHONE_REDIRECT_URL,

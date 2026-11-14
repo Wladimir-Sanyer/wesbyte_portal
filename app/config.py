@@ -81,6 +81,8 @@ def calcular_montos_periodo(precio_anual_base: float, periodo: Optional[str] = "
     por_anio = round(total / anios, 2)
     por_mes = round(total / (anios * 12), 2)
     cuota_msi_3 = round(total / 3, 2)
+    msi_meses = 6 if total > 250 else 3
+    cuota_msi = round(total / msi_meses, 2)
     return {
         "periodo": p_key,
         "label": meta["label"],
@@ -92,6 +94,8 @@ def calcular_montos_periodo(precio_anual_base: float, periodo: Optional[str] = "
         "por_anio": por_anio,
         "por_mes": por_mes,
         "cuota_msi_3": cuota_msi_3,
+        "msi_meses": msi_meses,
+        "cuota_msi": cuota_msi,
     }
 
 

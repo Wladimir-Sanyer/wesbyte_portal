@@ -175,7 +175,8 @@
                   <span class="text-muted small">Equivalente a <strong>${{ "%.2f"|format(p1.por_mes) }}/mes</strong></span>
                 </div>
                 <div class="mt-2 small fw-bold text-primary">
-                  <i class="ti ti-credit-card me-1"></i> Hasta 3 meses sin intereses (${{ "{:,.2f}".format(p1.cuota_msi_3) }}/mes)
+                  <i class="ti ti-credit-card me-1"></i> Hasta {{ p1.msi_meses }} meses sin intereses con tarjetas aliadas (${{ "{:,.2f}".format(p1.cuota_msi) }}/mes)
+                  <a href="#" class="text-decoration-underline ms-1" data-bs-toggle="modal" data-bs-target="#modalBancosAliados">Ver bancos</a>
                 </div>
               </div>
 
@@ -192,7 +193,8 @@
                   <span class="text-muted small"><strong>${{ "{:,.2f}".format(p2.por_anio) }}/año</strong> · <strong>${{ "%.2f"|format(p2.por_mes) }}/mes</strong></span>
                 </div>
                 <div class="mt-2 small fw-bold text-primary">
-                  <i class="ti ti-credit-card me-1"></i> Hasta 3 meses sin intereses (${{ "{:,.2f}".format(p2.cuota_msi_3) }}/mes)
+                  <i class="ti ti-credit-card me-1"></i> Hasta {{ p2.msi_meses }} meses sin intereses con tarjetas aliadas (${{ "{:,.2f}".format(p2.cuota_msi) }}/mes)
+                  <a href="#" class="text-decoration-underline ms-1" data-bs-toggle="modal" data-bs-target="#modalBancosAliados">Ver bancos</a>
                 </div>
               </div>
 
@@ -209,7 +211,8 @@
                   <span class="text-muted small"><strong>${{ "{:,.2f}".format(p3.por_anio) }}/año</strong> · <strong>${{ "%.2f"|format(p3.por_mes) }}/mes</strong></span>
                 </div>
                 <div class="mt-2 small fw-bold text-primary">
-                  <i class="ti ti-credit-card me-1"></i> Hasta 3 meses sin intereses (${{ "{:,.2f}".format(p3.cuota_msi_3) }}/mes)
+                  <i class="ti ti-credit-card me-1"></i> Hasta {{ p3.msi_meses }} meses sin intereses con tarjetas aliadas (${{ "{:,.2f}".format(p3.cuota_msi) }}/mes)
+                  <a href="#" class="text-decoration-underline ms-1" data-bs-toggle="modal" data-bs-target="#modalBancosAliados">Ver bancos</a>
                 </div>
               </div>
             </div>
@@ -515,6 +518,51 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL BANCOS Y TARJETAS ALIADAS (MESES SIN INTERESES) -->
+<div class="modal modal-blur fade" id="modalBancosAliados" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:20px;overflow:hidden;">
+      <div class="modal-header text-white py-3" style="background:linear-gradient(135deg,#12163a,#2563eb)">
+        <h4 class="modal-title mb-0 fw-bold"><i class="ti ti-building-bank me-1"></i> Bancos y Tarjetas Aliadas · Meses Sin Intereses</h4>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body p-4">
+        <div class="alert alert-info small mb-3" style="border-radius:12px;">
+          <div class="fw-bold mb-1"><i class="ti ti-info-circle me-1"></i> Condiciones de diferido sin intereses en PayPhone:</div>
+          <ul class="mb-0 ps-3">
+            <li>Montos entre <strong>$200.00 y $250.00 USD</strong>: <strong>3 meses sin intereses</strong> con tarjetas aliadas.</li>
+            <li>Montos <strong>mayores a $250.00 USD</strong>: <strong>6 meses sin intereses</strong> con tarjetas aliadas.</li>
+          </ul>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-vcenter table-striped table-bordered mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Banco / Emisor Convenio</th>
+                <th>Tarjetas Habilitadas</th>
+              </tr>
+            </thead>
+            <tbody class="small">
+              <tr><td class="fw-bold">Banco Comercial Manabí</td><td>Visa</td></tr>
+              <tr><td class="fw-bold">Banco Diners Club del Ecuador, S.A.</td><td>Diners Club International · Discover · Mastercard · Visa</td></tr>
+              <tr><td class="fw-bold">Banco Pichincha (PA)</td><td>Diners Club International</td></tr>
+              <tr><td class="fw-bold">BGR</td><td>Visa</td></tr>
+              <tr><td class="fw-bold">Cooperativa Andalucía</td><td>Visa</td></tr>
+              <tr><td class="fw-bold">Interdin</td><td>Diners Club International · Discover · Mastercard · Visa</td></tr>
+              <tr><td class="fw-bold">Loja</td><td>Visa</td></tr>
+              <tr><td class="fw-bold">Pichincha</td><td>Discover · Mastercard · Visa</td></tr>
+              <tr><td class="fw-bold">Rumiñahui</td><td>Visa</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Entendido</button>
+      </div>
     </div>
   </div>
 </div>
