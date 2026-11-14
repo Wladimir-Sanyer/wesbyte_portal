@@ -4,8 +4,8 @@
 
 {% block extra_head %}
 <!-- PayPhone Cajita de Pagos Oficial CSS & JS -->
-<link rel="stylesheet" href="https://cdn.payphonetodoesfacil.com/box/v1.1/payphone-payment-box.css"/>
-<script type="module" src="https://cdn.payphonetodoesfacil.com/box/v1.1/payphone-payment-box.js"></script>
+<link rel="stylesheet" href="https://cdn.payphonetodoesposible.com/box/v1.1/payphone-payment-box.css"/>
+<script type="module" src="https://cdn.payphonetodoesposible.com/box/v1.1/payphone-payment-box.js"></script>
 {% endblock %}
 
 {% block content %}
@@ -371,17 +371,20 @@
       container.innerHTML = "";
       return;
     }
-    if (!window.PPPaymentButtonBox) {
+    const PayphoneBoxClass = window.PPaymentButtonBox || window.PPPaymentButtonBox || (typeof PPaymentButtonBox !== "undefined" ? PPaymentButtonBox : null);
+    if (!PayphoneBoxClass) {
       if (_ppRenderAttempts < 20) {
         _ppRenderAttempts += 1;
         setTimeout(renderizarCajitaOficialPayphone, 200);
+      } else {
+        container.innerHTML = `<div class="alert alert-danger small mb-0"><i class="ti ti-alert-triangle me-1"></i> No se pudo cargar la Cajita de Pagos de PayPhone. Recarga la página o desactiva bloqueadores de anuncios.</div>`;
       }
       return;
     }
 
     container.innerHTML = "";
     try {
-      const ppb = new PPPaymentButtonBox({
+      const ppb = new PayphoneBoxClass({
         token: token,
         storeId: storeId || undefined,
         clientTransactionId: cfg.clientTransactionId,
@@ -400,7 +403,8 @@
       });
       ppb.render("pp-button");
     } catch (e) {
-      console.warn("No se pudo inicializar PPPaymentButtonBox:", e);
+      console.warn("No se pudo inicializar PPaymentButtonBox:", e);
+      container.innerHTML = `<div class="alert alert-danger small mb-0"><i class="ti ti-alert-triangle me-1"></i> Error al inicializar PayPhone: ${e.message || e}</div>`;
     }
   }
 
