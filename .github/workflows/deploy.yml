@@ -39,18 +39,18 @@ jobs:
           from app.services.payphone_service import build_payphone_box_config
 
           assert len(PLANES_OFICIALES) == 3, 'Deben existir los 3 planes comerciales'
-          assert PLANES_OFICIALES[0]['precio_anual'] == 240.00 and PLANES_OFICIALES[0]['precio_anual_con_descuento'] == 216.00
-          assert PLANES_OFICIALES[1]['precio_anual'] == 360.00 and PLANES_OFICIALES[1]['precio_anual_con_descuento'] == 324.00
-          assert PLANES_OFICIALES[2]['precio_anual'] == 540.00 and PLANES_OFICIALES[2]['precio_anual_con_descuento'] == 486.00
+          assert PLANES_OFICIALES[0]['precio_anual'] == 199.99 and PLANES_OFICIALES[0]['precio_anual_con_descuento'] == 199.99
+          assert PLANES_OFICIALES[1]['precio_anual'] == 359.99 and PLANES_OFICIALES[1]['precio_anual_con_descuento'] == 359.99
+          assert PLANES_OFICIALES[2]['precio_anual'] == 499.99 and PLANES_OFICIALES[2]['precio_anual_con_descuento'] == 499.99
 
           ds_name = normalize_dataset_name('Seguros Águila & Cía. S.A.')
           assert ds_name == 'segurosaguilaciasa', f'Dataset inesperado: {ds_name}'
 
-          calc = calcular_plan_personalizado(5, 300, 200, 400)
-          assert calc['precio_anual_con_descuento'] == 486.00
+          calc = calcular_plan_personalizado(5, 1500, 3000, 1000)
+          assert calc['precio_anual_con_descuento'] == 499.99
 
-          pp_cfg = build_payphone_box_config('WB1AN12345', 216.00, 'Plan Prime', 'test@wesbyte.app', '0991234567', '1790012345001', 'anual_unico')
-          assert pp_cfg['amount'] == 21600
+          pp_cfg = build_payphone_box_config('WB11Y12345', 199.99, 'Plan Prime', 'test@wesbyte.app', '0991234567', '1790012345001', 'pago_unico_1_year')
+          assert pp_cfg['amount'] == 19999
           print('Todas las validaciones de negocio pasaron exitosamente.')
           "
 
