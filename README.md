@@ -1,6 +1,6 @@
 # Wesbyte Portal Comercial & Onboarding Multi-Tenant
 
-Aplicación web desarrollada en **Python (FastAPI + Gunicorn/Uvicorn + Google Cloud BigQuery + PayPhone)** para la comercialización, personalización de planes, cobro y aprovisionamiento automático de entornos Multi-Tenant en el proyecto `broker-pmp`.
+Aplicación web desarrollada en **Python (FastAPI + Gunicorn/Uvicorn + Google Cloud BigQuery + PayPhone)** para la comercialización, personalización de planes, cobro y aprovisionamiento automático de entornos Multi-Tenant en el proyecto `wesbyte`.
 
 Corre por defecto en el **puerto `8085`** como contenedor Docker individual (`portal-wesbyte`).
 

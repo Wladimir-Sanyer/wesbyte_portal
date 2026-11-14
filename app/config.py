@@ -1,70 +1,131 @@
 import os
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-BIGQUERY_PROJECT_ID = os.getenv("BIGQUERY_PROJECT_ID", "broker-pmp")
-WESBYTES_DATASET_ID = os.getenv("WESBYTES_DATASET_ID", "wesbytes")
-TEMPLATE_DATASET_ID = os.getenv("TEMPLATE_DATASET_ID", "broker_pmp")
+BIGQUERY_PROJECT_ID = os.getenv("BIGQUERY_PROJECT_ID", "wesbyte")
+WESBYTES_DATASET_ID = os.getenv("WESBYTES_DATASET_ID", "administracion")
+TEMPLATE_DATASET_ID = os.getenv("TEMPLATE_DATASET_ID", "prototipo")
+
+# Variables GCP / BigQuery estándar
+GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", BIGQUERY_PROJECT_ID).strip()
+WESBYTE_CENTRAL_DATASET = os.getenv("WESBYTE_CENTRAL_DATASET", WESBYTES_DATASET_ID).strip()
+
+# Servicio Transaccional de Correos (Resend)
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
+INTERNAL_EMAIL_SERVICE_KEY = os.getenv("INTERNAL_EMAIL_SERVICE_KEY", "wesbyte_internal_email_service_key_2026").strip()
+EMAIL_SENDER_DEFAULT = os.getenv("EMAIL_SENDER_DEFAULT", "Wesbyte <notifications@wesbyte.app>").strip()
+
+# Microservicio de WhatsApp (wesbyte_api)
+WHATSAPP_API_URL = os.getenv("WHATSAPP_API_URL", "http://whatsapp_api:8000").strip().rstrip("/")
+WHATSAPP_SERVICE_API_KEY = os.getenv("WHATSAPP_SERVICE_API_KEY", "WesbyteServiceKey2026").strip()
 
 CREDENTIALS_PATH = os.getenv(
     "GOOGLE_APPLICATION_CREDENTIALS",
-    str(BASE_DIR / ".secrets" / "broker-pmp-2aec3024d9c6.json"),
+    str(BASE_DIR / ".secrets" / "wesbyte-e1e002799cb2.json"),
 )
 if not os.path.isabs(CREDENTIALS_PATH):
     CREDENTIALS_PATH = str(BASE_DIR / CREDENTIALS_PATH)
+
+# Google Drive OAuth2 (Almacenamiento de logos en clientes/logos)
+GOOGLE_DRIVE_CLIENT_ID = os.getenv("GOOGLE_DRIVE_CLIENT_ID", "").strip()
+GOOGLE_DRIVE_CLIENT_SECRET = os.getenv("GOOGLE_DRIVE_CLIENT_SECRET", "").strip()
+GOOGLE_DRIVE_REFRESH_TOKEN = os.getenv("GOOGLE_DRIVE_REFRESH_TOKEN", "").strip()
 
 SECRET_KEY = os.getenv("SECRET_KEY", "wesbyte-portal-jwt-secret-key-2026")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 
 APP_VERSION = os.getenv("APP_VERSION", "v1.0.0")
-WESBYTE_APP_URL = os.getenv("WESBYTE_APP_URL", "http://localhost:80")
+WESBYTE_APP_URL = os.getenv("WESBYTE_APP_URL", "https://portal.wesbyte.app")
 SOPORTE_EMAIL = os.getenv("SOPORTE_EMAIL", "soporte@wesbyte.app")
 
 # Configuración PayPhone
 PAYPHONE_TOKEN = os.getenv("PAYPHONE_TOKEN", "").strip()
 PAYPHONE_STORE_ID = os.getenv("PAYPHONE_STORE_ID", "").strip()
 PAYPHONE_API_URL = os.getenv("PAYPHONE_API_URL", "https://pay.payphonetodoesfacil.com/api").rstrip("/")
-PAYPHONE_REDIRECT_URL = os.getenv("PAYPHONE_REDIRECT_URL", "http://localhost:8080/checkout/payphone/callback")
+PAYPHONE_REDIRECT_URL = os.getenv("PAYPHONE_REDIRECT_URL", "https://wesbyte.app/checkout/payphone/callback")
 PAYPHONE_SANDBOX_MODE = os.getenv("PAYPHONE_SANDBOX_MODE", "true").lower() in ("true", "1", "yes") or not PAYPHONE_TOKEN
 
 # Acceso interno (panel de administración). Si no se define, el panel queda deshabilitado.
 STAFF_USER = os.getenv("PORTAL_STAFF_USER", "").strip()
 STAFF_PASSWORD = os.getenv("PORTAL_STAFF_PASSWORD", "").strip()
 
-# Descuento por pago único anual (10%)
-DESCUENTO_ANUAL_PCT = 10.0
+# Opciones de compromiso de pago único (sin suscripción mensual recurrente)
+PERIODOS_COMPROMISO: Dict[str, Dict[str, Any]] = {
+    "1_year": {"codigo": "1_year", "anios": 1, "label": "1 Año", "descuento_pct": 0.0},
+    "2_years": {"codigo": "2_years", "anios": 2, "label": "2 Años", "descuento_pct": 10.0},
+    "3_years": {"codigo": "3_years", "anios": 3, "label": "3 Años", "descuento_pct": 15.0},
+}
 
-# Catálogo oficial de los 3 planes comerciales Wesbyte
+
+def normalizar_periodo(periodo: Optional[str]) -> str:
+    p = str(periodo or "1_year").strip().lower()
+    if p in PERIODOS_COMPROMISO:
+        return p
+    return "1_year"
+
+
+def calcular_montos_periodo(precio_anual_base: float, periodo: Optional[str] = "1_year") -> Dict[str, Any]:
+    """Calcula subtotal, descuento, total, por año y equivalente mensual para 1_year, 2_years o 3_years."""
+    p_key = normalizar_periodo(periodo)
+    meta = PERIODOS_COMPROMISO[p_key]
+    anios = int(meta["anios"])
+    desc_pct = float(meta["descuento_pct"])
+    subtotal = round(float(precio_anual_base) * anios, 2)
+    ahorro = round(subtotal * (desc_pct / 100.0), 2)
+    total = round(subtotal - ahorro, 2)
+    por_anio = round(total / anios, 2)
+    por_mes = round(total / (anios * 12), 2)
+    cuota_msi_3 = round(total / 3, 2)
+    return {
+        "periodo": p_key,
+        "label": meta["label"],
+        "anios": anios,
+        "descuento_pct": desc_pct,
+        "subtotal": subtotal,
+        "ahorro": ahorro,
+        "total": total,
+        "por_anio": por_anio,
+        "por_mes": por_mes,
+        "cuota_msi_3": cuota_msi_3,
+    }
+
+
+# Catálogo oficial de los 3 planes comerciales Wesbyte (pago único anual o multianual)
 PLANES_OFICIALES: List[Dict[str, Any]] = [
     {
         "id": 1,
-        "codigo": "PRIME_BRONZE",
+        "codigo": "PRIME",
+        "slug": "prime",
         "nombre": "Plan Prime",
         "tier": "Bronze",
         "badge": "Inicial",
-        "color": "bronze",
-        "subtitulo": "Ideal para agentes independientes y brokers en crecimiento que inician su automatización.",
-        "rango_clientes_min": 20,
-        "rango_clientes_max": 50,
-        "rango_clientes_label": "20 a 50 clientes mensuales",
+        "color": "prime",
+        "subtitulo": "Ideal para independientes y empresas en crecimiento que inician su automatización.",
         "max_usuarios": 1,
-        "limite_mensual_whatsapp": 50,
-        "limite_mensual_emails": 50,
-        "limite_mensual_api_ecuador": 50,
-        "limite_diario_whatsapp": 10,
-        "limite_diario_emails": 10,
-        "limite_diario_api_ecuador": 10,
-        "precio_mensual": 20.00,
-        "precio_anual": 240.00,
-        "descuento_anual_pct": 10.00,
-        "precio_anual_con_descuento": 216.00,
-        "ahorro_anual": 24.00,
-        "equivalente_mensual_anual": 18.00,
+        "limite_mensual_whatsapp": 150,
+        "whatsapp_detalle": "enviadas desde cuenta oficial Wesbyte",
+        "limite_mensual_emails": 250,
+        "limite_mensual_api_ecuador": 100,
+        "pdf_detalle": None,
+        "precio_mensual": 16.67,
+        "precio_anual": 199.99,
+        "descuento_anual_pct": 0.00,
+        "precio_anual_con_descuento": 199.99,
+        "precio_anual_payphone": 199.99,
+        "ahorro_anual": 0.00,
+        "equivalente_mensual_anual": 16.67,
+        "meses_sin_intereses": 3,
+        "cuota_sin_intereses": 66.66,
+        "periodos": {
+            "1_year": calcular_montos_periodo(199.99, "1_year"),
+            "2_years": calcular_montos_periodo(199.99, "2_years"),
+            "3_years": calcular_montos_periodo(199.99, "3_years"),
+        },
         "valor_individual_estimado_anual": 240.00,
         "ahorro_por_volumen_pct": 0,
         "costo_por_interaccion": 0.133,
@@ -73,28 +134,33 @@ PLANES_OFICIALES: List[Dict[str, Any]] = [
     },
     {
         "id": 2,
-        "codigo": "MEDIUM_SILVER",
+        "codigo": "MEDIUM",
+        "slug": "medium",
         "nombre": "Plan Medium",
         "tier": "Silver",
         "badge": "Crecimiento",
-        "color": "silver",
+        "color": "medium",
         "subtitulo": "Para agencias consolidadas con equipo operativo y mayor volumen de consultas estatales.",
-        "rango_clientes_min": 50,
-        "rango_clientes_max": 200,
-        "rango_clientes_label": "50 a 200 clientes mensuales",
         "max_usuarios": 3,
-        "limite_mensual_whatsapp": 100,
-        "limite_mensual_emails": 100,
-        "limite_mensual_api_ecuador": 200,
-        "limite_diario_whatsapp": 20,
-        "limite_diario_emails": 20,
-        "limite_diario_api_ecuador": 35,
+        "limite_mensual_whatsapp": 500,
+        "whatsapp_detalle": "desde tu propio WhatsApp corporativo",
+        "limite_mensual_emails": 1000,
+        "limite_mensual_api_ecuador": 400,
+        "pdf_detalle": "Cargue de PDF (condiciones de pago)",
         "precio_mensual": 30.00,
-        "precio_anual": 360.00,
-        "descuento_anual_pct": 10.00,
-        "precio_anual_con_descuento": 324.00,
-        "ahorro_anual": 36.00,
-        "equivalente_mensual_anual": 27.00,
+        "precio_anual": 359.99,
+        "descuento_anual_pct": 0.00,
+        "precio_anual_con_descuento": 359.99,
+        "precio_anual_payphone": 359.99,
+        "ahorro_anual": 0.00,
+        "equivalente_mensual_anual": 30.00,
+        "meses_sin_intereses": 3,
+        "cuota_sin_intereses": 120.00,
+        "periodos": {
+            "1_year": calcular_montos_periodo(359.99, "1_year"),
+            "2_years": calcular_montos_periodo(359.99, "2_years"),
+            "3_years": calcular_montos_periodo(359.99, "3_years"),
+        },
         "valor_individual_estimado_anual": 552.00,
         "ahorro_por_volumen_pct": 35,
         "costo_por_interaccion": 0.075,
@@ -104,27 +170,32 @@ PLANES_OFICIALES: List[Dict[str, Any]] = [
     {
         "id": 3,
         "codigo": "SUPER_GOLD",
+        "slug": "super_gold",
         "nombre": "Plan Super Gold",
         "tier": "Gold",
-        "badge": "Más Beneficioso · Mejor Valor",
+        "badge": "EL MÁS CONVENIENTE · MEJOR PRECIO POR USO",
         "color": "gold",
-        "subtitulo": "Máxima rentabilidad por usuario y consulta. Multiplica x6 tu capacidad a una fracción del costo unitario.",
-        "rango_clientes_min": 200,
-        "rango_clientes_max": 500,
-        "rango_clientes_label": "200 a 500+ clientes mensuales",
+        "subtitulo": "Máxima rentabilidad por usuario y consulta. Multiplica tu capacidad al menor costo unitario.",
         "max_usuarios": 5,
-        "limite_mensual_whatsapp": 300,
-        "limite_mensual_emails": 200,
-        "limite_mensual_api_ecuador": 400,
-        "limite_diario_whatsapp": 50,
-        "limite_diario_emails": 40,
-        "limite_diario_api_ecuador": 70,
-        "precio_mensual": 45.00,
-        "precio_anual": 540.00,
-        "descuento_anual_pct": 10.00,
-        "precio_anual_con_descuento": 486.00,
-        "ahorro_anual": 54.00,
-        "equivalente_mensual_anual": 40.50,
+        "limite_mensual_whatsapp": 1500,
+        "whatsapp_detalle": "desde tu propio WhatsApp corporativo",
+        "limite_mensual_emails": 3000,
+        "limite_mensual_api_ecuador": 1000,
+        "pdf_detalle": "Cargue de PDF (condiciones de pago)",
+        "precio_mensual": 41.67,
+        "precio_anual": 499.99,
+        "descuento_anual_pct": 0.00,
+        "precio_anual_con_descuento": 499.99,
+        "precio_anual_payphone": 499.99,
+        "ahorro_anual": 0.00,
+        "equivalente_mensual_anual": 41.67,
+        "meses_sin_intereses": 3,
+        "cuota_sin_intereses": 166.66,
+        "periodos": {
+            "1_year": calcular_montos_periodo(499.99, "1_year"),
+            "2_years": calcular_montos_periodo(499.99, "2_years"),
+            "3_years": calcular_montos_periodo(499.99, "3_years"),
+        },
         "valor_individual_estimado_anual": 1128.00,
         "ahorro_por_volumen_pct": 52,
         "costo_por_interaccion": 0.050,
@@ -134,15 +205,15 @@ PLANES_OFICIALES: List[Dict[str, Any]] = [
 ]
 
 # Tarifario unitario para la Calculadora de Plan Personalizado
-# Calibrado para que 1 usr + 50 WA + 50 Email + 50 API = $20/mes ($240/año)
-# y para evidenciar el ahorro masivo (52%) al elegir el paquete Super Gold ($45/mes vs $94/mes suelto).
+# Calibrado proporcionalmente a los planes actuales ($199.99 / $359.99 / $499.99)
+# y a sus cuotas (150-1500 WA, 250-3000 Email, 100-1000 API estatal).
 TARIFAS_CALCULADORA = {
-    "base_plataforma_mensual": 10.00,      # Incluye infraestructura dedicada BigQuery + 1er usuario
-    "costo_usuario_extra_mensual": 5.50,   # Por cada usuario adicional (> 1)
-    "costo_whatsapp_unitario": 0.08,       # Por mensaje WhatsApp alerta mensual ($4 por cada 50)
-    "costo_email_unitario": 0.05,          # Por correo y notificación mensual ($2.50 por cada 50)
-    "costo_api_ecuador_unitario": 0.07,    # Por consulta API estatal mensual ($3.50 por cada 50)
-    "descuento_anual_pct": 10.0,
+    "base_plataforma_mensual": 8.00,       # Incluye infraestructura dedicada BigQuery + 1er usuario
+    "costo_usuario_extra_mensual": 4.00,   # Por cada usuario adicional (> 1)
+    "costo_whatsapp_unitario": 0.025,      # Por mensaje WhatsApp alerta mensual ($2.50 por cada 100)
+    "costo_email_unitario": 0.008,         # Por correo y notificación mensual ($0.80 por cada 100)
+    "costo_api_ecuador_unitario": 0.030,   # Por consulta API estatal mensual ($3.00 por cada 100)
+    "descuento_anual_pct": 5.0,
 }
 
 
@@ -183,61 +254,62 @@ def calcular_plan_personalizado(
             plan_equivalente = p
             break
 
-    # Si los recursos solicitados caben dentro de Super Gold (<=5 usr, <=300 WA, <=200 Email, <=400 API)
-    # y el precio suelto supera los $45/mes de Super Gold, recomendamos Super Gold
+    # Si los recursos solicitados caben dentro de Super Gold (<=5 usr, <=1500 WA, <=3000 Email, <=1000 API)
+    # y el precio suelto supera los $41.67/mes de Super Gold, recomendamos Super Gold
     cabe_en_gold = (
         usuarios <= 5
-        and whatsapp_mensual <= 300
-        and emails_mensual <= 200
+        and whatsapp_mensual <= 1500
+        and emails_mensual <= 3000
+        and api_ecuador_mensual <= 1000
+    )
+    cabe_en_medium = (
+        usuarios <= 3
+        and whatsapp_mensual <= 500
+        and emails_mensual <= 1000
         and api_ecuador_mensual <= 400
     )
-    cabe_en_silver = (
-        usuarios <= 3
-        and whatsapp_mensual <= 100
-        and emails_mensual <= 100
-        and api_ecuador_mensual <= 200
-    )
 
-    # Si supera los límites de Gold, calculamos tomando la tarifa bonificada de Gold ($45) + solo los excedentes
-    supera_gold = not cabe_en_gold and (
-        usuarios >= 5 or whatsapp_mensual >= 300 or emails_mensual >= 200 or api_ecuador_mensual >= 400
-    )
+    # Si supera los límites de Gold, calculamos tomando la tarifa bonificada de Gold + solo los excedentes
     if plan_equivalente:
         precio_mensual_final = plan_equivalente["precio_mensual"]
-    elif supera_gold and (
-        usuarios >= 5 and whatsapp_mensual >= 300 and emails_mensual >= 200 and api_ecuador_mensual >= 400
-    ):
-        # Parte de la base Gold ($45) + adicionales con 20% de descuento corporativo
+    elif not cabe_en_gold:
+        # Parte de la base Gold + adicionales con descuento corporativo
         extra_usr = max(0, usuarios - 5) * (t["costo_usuario_extra_mensual"] * 0.8)
-        extra_wa = max(0, whatsapp_mensual - 300) * (t["costo_whatsapp_unitario"] * 0.75)
-        extra_em = max(0, emails_mensual - 200) * (t["costo_email_unitario"] * 0.75)
-        extra_api = max(0, api_ecuador_mensual - 400) * (t["costo_api_ecuador_unitario"] * 0.75)
-        precio_mensual_final = round(45.00 + extra_usr + extra_wa + extra_em + extra_api, 2)
+        extra_wa = max(0, whatsapp_mensual - 1500) * (t["costo_whatsapp_unitario"] * 0.75)
+        extra_em = max(0, emails_mensual - 3000) * (t["costo_email_unitario"] * 0.75)
+        extra_api = max(0, api_ecuador_mensual - 1000) * (t["costo_api_ecuador_unitario"] * 0.75)
+        precio_gold_mas_excedentes = round(41.67 + extra_usr + extra_wa + extra_em + extra_api, 2)
+        precio_mensual_final = min(precio_mensual_suelto, precio_gold_mas_excedentes)
     else:
         precio_mensual_final = precio_mensual_suelto
 
-    precio_anual = round(precio_mensual_final * 12, 2)
-    descuento_anual = round(precio_anual * (t["descuento_anual_pct"] / 100.0), 2)
-    precio_anual_con_descuento = round(precio_anual - descuento_anual, 2)
+    if plan_equivalente:
+        precio_anual = float(plan_equivalente["precio_anual"])
+        descuento_anual = 0.0
+        precio_anual_con_descuento = precio_anual
+    else:
+        precio_anual = round(precio_mensual_final * 12, 2)
+        descuento_anual = round(precio_anual * (t["descuento_anual_pct"] / 100.0), 2)
+        precio_anual_con_descuento = round(precio_anual - descuento_anual, 2)
 
     recomendacion_gold = False
     mensaje_recomendacion = ""
     if cabe_en_gold and precio_mensual_final >= 38.00 and not (plan_equivalente and plan_equivalente["codigo"] == "SUPER_GOLD"):
         recomendacion_gold = True
-        ahorro_vs_custom = round((precio_mensual_suelto - 45.00) * 12, 2)
+        ahorro_vs_custom = round(precio_anual_con_descuento - 499.99, 2)
         if ahorro_vs_custom > 0:
             mensaje_recomendacion = (
-                f"¡El Plan Super Gold te incluye 5 usuarios, 300 WhatsApp, 200 correos/notificaciones y 400 consultas API "
-                f"por solo $45/mes ($486/año con descuento), ahorrándote ${ahorro_vs_custom:.2f} al año frente a armarlo por separado!"
+                f"¡El Plan Super Gold te incluye 5 usuarios, 1,500 WhatsApp, 3,000 correos/notificaciones y 1,000 consultas API "
+                f"por $499.99/año ($41.67/mes), ahorrándote ${ahorro_vs_custom:.2f} al año frente a armarlo por separado!"
             )
         else:
             mensaje_recomendacion = (
-                "Por solo unos dólares más al mes, el Plan Super Gold te entrega 5 usuarios, 300 WhatsApp, "
-                "200 correos/notificaciones y 400 consultas API estatales."
+                "Por solo unos dólares más al mes, el Plan Super Gold te entrega 5 usuarios, 1,500 WhatsApp, "
+                "3,000 correos/notificaciones y 1,000 consultas API estatales por $499.99/año."
             )
-    elif cabe_en_silver and precio_mensual_final > 30.00:
+    elif cabe_en_medium and precio_mensual_final > 30.00:
         mensaje_recomendacion = (
-            "¡Tip! Tus recursos caben dentro del Plan Medium (Silver) de $30/mes ($324/año con 10% OFF)."
+            "¡Tip! Tus recursos caben dentro del Plan Medium de $359.99/año ($30.00/mes)."
         )
 
     return {
@@ -245,9 +317,6 @@ def calcular_plan_personalizado(
         "limite_mensual_whatsapp": whatsapp_mensual,
         "limite_mensual_emails": emails_mensual,
         "limite_mensual_api_ecuador": api_ecuador_mensual,
-        "limite_diario_whatsapp": max(10, int(round(whatsapp_mensual / 5))),
-        "limite_diario_emails": max(10, int(round(emails_mensual / 5))),
-        "limite_diario_api_ecuador": max(10, int(round(api_ecuador_mensual / 5))),
         "desglose_mensual": {
             "base_plataforma": round(costo_base, 2),
             "usuarios_adicionales": round(costo_usuarios, 2),

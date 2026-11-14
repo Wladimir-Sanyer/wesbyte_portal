@@ -12,9 +12,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Crear usuario sin privilegios
+# Crear usuario sin privilegios con directorio de inicio
 RUN groupadd -r appuser && \
-    useradd -r -g appuser appuser
+    useradd -m -r -g appuser appuser
 
 # Copiar código con permisos adecuados
 COPY --chown=appuser:appuser . .

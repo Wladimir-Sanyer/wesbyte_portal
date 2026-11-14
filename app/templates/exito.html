@@ -12,74 +12,67 @@
           <span class="avatar avatar-xl rounded-circle bg-white text-success mb-3 shadow">
             <i class="ti ti-circle-check-filled" style="font-size: 2.5rem;"></i>
           </span>
-          <h1 class="fw-extrabold mb-1">¡Pago Verificado y Entorno BigQuery Aprovisionado!</h1>
+          <h1 class="fw-extrabold mb-1">¡Pago Verificado y Cuenta Activada Exitosamente!</h1>
           <p class="mb-0 opacity-90 fs-3">
-            Bienvenido a Wesbyte Cloud, <strong>{{ reg.nombre_empresa }}</strong>. Tu base de datos y credenciales están activas.
+            Bienvenido a Wesbyte, <strong>{{ reg.nombre_empresa }}</strong>. Tu base de datos y accesos están listos para operar.
           </p>
         </div>
 
         <div class="card-body p-4 p-lg-5">
           <div class="row g-4">
-            <!-- 1. Detalles del Dataset Creado y Tablas Copiadas -->
+            <!-- 1. Detalles del Entorno Creado -->
             <div class="col-md-6">
               <div class="p-4 rounded-4 bg-light border h-100">
                 <div class="d-flex align-items-center justify-content-between mb-3">
-                  <span class="badge bg-primary text-white">INFRAESTRUCTURA GOOGLE BIGQUERY</span>
+                  <span class="badge bg-primary text-white">BASE DE DATOS PRIVADA</span>
                   <span class="badge bg-green-lt text-green fw-bold">ACTIVO</span>
                 </div>
-                <h4 class="fw-extrabold mb-2">Dataset Exclusivo Creado</h4>
+                <h4 class="fw-extrabold mb-2">Tu Espacio Seguro</h4>
                 <div class="dataset-preview-chip mb-3">
                   {{ result.provisioning.dataset_id }}
                 </div>
 
                 <div class="small text-muted mb-2 fw-bold">
-                  Tablas copiadas vacías ({{ result.provisioning.cloned_tables | length }} tablas):
+                  Módulos y registros habilitados:
                 </div>
                 <div class="d-flex flex-wrap gap-1 mb-3">
-                  {% for tbl in result.provisioning.cloned_tables %}
-                  <span class="badge bg-white text-dark border"><i class="ti ti-table text-primary me-1"></i>{{ tbl }}</span>
-                  {% endfor %}
+                  <span class="badge bg-white text-dark border"><i class="ti ti-users text-primary me-1"></i>Clientes</span>
+                  <span class="badge bg-white text-dark border"><i class="ti ti-heart-rate-monitor text-primary me-1"></i>Médicos</span>
+                  <span class="badge bg-white text-dark border"><i class="ti ti-car text-primary me-1"></i>Vehiculares</span>
+                  <span class="badge bg-white text-dark border"><i class="ti ti-shield text-primary me-1"></i>Vida e Inversión</span>
+                  <span class="badge bg-white text-dark border"><i class="ti ti-briefcase text-primary me-1"></i>Ramos Generales</span>
                 </div>
 
-                {% if result.provisioning.cloned_views %}
-                <div class="small text-muted mb-1 fw-bold">Vistas configuradas:</div>
-                <div class="d-flex flex-wrap gap-1">
-                  {% for vw in result.provisioning.cloned_views %}
-                  <span class="badge bg-azure-lt text-azure"><i class="ti ti-eye me-1"></i>{{ vw }}</span>
-                  {% endfor %}
-                </div>
-                {% endif %}
+                <p class="small text-muted mb-0">
+                  <i class="ti ti-check text-success me-1"></i> Base de datos dedicada y aislada, 100% de tu propiedad.
+                </p>
               </div>
             </div>
 
-            <!-- 2. Credenciales Guardadas en maestra_usuarios_app y wesbytes.usuarios -->
+            <!-- 2. Credenciales de Acceso -->
             <div class="col-md-6">
               <div class="p-4 rounded-4 bg-light border h-100">
                 <div class="d-flex align-items-center justify-content-between mb-3">
                   <span class="badge bg-warning text-dark fw-bold">CREDENCIALES DE ACCESO</span>
-                  <span class="badge bg-azure-lt">maestra_usuarios_app</span>
+                  <span class="badge bg-green-lt text-green fw-bold">HABILITADO</span>
                 </div>
-                <h4 class="fw-extrabold mb-2">Tus Usuarios Administradores</h4>
+                <h4 class="fw-extrabold mb-2">Tus Credenciales de Ingreso</h4>
                 <p class="small text-muted mb-3">
-                  Se han registrado tus credenciales en tu aplicación con la misma contraseña que elegiste:
+                  Ya puedes entrar al portal y a tu aplicación con los datos que registraste:
                 </p>
 
                 <div class="bg-white rounded-3 p-3 border mb-3">
                   <div class="d-flex justify-content-between py-1 border-bottom">
-                    <span class="text-muted small">Usuario Maestro Estándar:</span>
-                    <code>admin</code>
-                  </div>
-                  <div class="d-flex justify-content-between py-1 border-bottom">
-                    <span class="text-muted small">Usuario Personal Registrado:</span>
-                    <code>{{ reg.username }}</code>
+                    <span class="text-muted small">Usuario (Correo):</span>
+                    <strong class="text-dark">{{ reg.correo or reg.username }}</strong>
                   </div>
                   <div class="d-flex justify-content-between py-1 border-bottom">
                     <span class="text-muted small">Contraseña:</span>
-                    <span class="small fw-semibold">La contraseña que registraste (cifrada con Bcrypt)</span>
+                    <span class="small fw-semibold">La contraseña que registraste</span>
                   </div>
                   <div class="d-flex justify-content-between pt-1">
-                    <span class="text-muted small">Rol y Permisos:</span>
-                    <span class="badge bg-green-lt">Administrador (Todos los Ramos)</span>
+                    <span class="text-muted small">Rol:</span>
+                    <span class="badge bg-green-lt">Administrador</span>
                   </div>
                 </div>
 
@@ -87,12 +80,12 @@
                 <div class="small bg-white rounded-3 p-3 border">
                   <div class="fw-bold mb-1 text-dark"><i class="ti ti-receipt me-1 text-warning"></i> Comprobante PayPhone</div>
                   <div class="d-flex justify-content-between">
-                    <span class="text-muted">Plan Contratado:</span>
-                    <strong>{{ plan.nombre }} ({{ plan.max_usuarios }} usuarios)</strong>
+                    <span class="text-muted">Plan:</span>
+                    <strong>{{ plan.nombre }}</strong>
                   </div>
                   <div class="d-flex justify-content-between">
                     <span class="text-muted">Modalidad:</span>
-                    <strong>{% if result.modalidad_pago == 'anual_unico' %}Pago Único Anual (-10% Descuento){% else %}Pago Mensual Recurrente{% endif %}</strong>
+                    <strong>{% if result.modalidad_pago == 'pago_unico_3_years' %}Pago Único · 3 Años (-15% OFF){% elif result.modalidad_pago == 'pago_unico_2_years' %}Pago Único · 2 Años (-10% OFF){% else %}Pago Único Anual{% endif %}</strong>
                   </div>
                   <div class="d-flex justify-content-between">
                     <span class="text-muted">Monto Pagado:</span>

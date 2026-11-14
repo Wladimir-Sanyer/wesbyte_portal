@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="460" height="140" viewBox="0 0 460 140" fill="none">
+  
+  <g transform="translate(32, 34) scale(1.18)">
+    
+  <path d="M9 19C13 38.5 16.5 48 21 48C25.5 48 28 24.5 32 24.5C36 24.5 38.5 48 43 48C47.5 48 51 38.5 55 19" stroke="#09090B" stroke-width="7.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="32" cy="12.5" r="4.2" fill="#2563EB"/>
+  </g>
+  <text x="101" y="93" fill="#09090B" font-family="Outfit, sans-serif" font-weight="600" font-size="56" letter-spacing="-0.03em">esbyte<tspan fill="#2563EB" font-size="28" font-weight="500">.app</tspan></text>
+</svg>

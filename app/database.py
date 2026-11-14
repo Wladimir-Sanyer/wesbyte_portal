@@ -3,6 +3,7 @@ import uuid
 import unicodedata
 import datetime
 import logging
+from decimal import Decimal
 from typing import Optional, Dict, Any, List
 import pandas as pd
 import bcrypt
@@ -52,6 +53,19 @@ def append_rows(dataset_id: str, table_name: str, rows: List[Dict[str, Any]]) ->
         return
     client = get_bq_client()
     table_ref = f"{BIGQUERY_PROJECT_ID}.{dataset_id}.{table_name}"
+
+    # Asegurar conversión de floats a Decimal para columnas NUMERIC / BIGNUMERIC de BigQuery
+    try:
+        tbl = client.get_table(table_ref)
+        numeric_fields = {f.name for f in tbl.schema if f.field_type in ("NUMERIC", "BIGNUMERIC", "DECIMAL")}
+        if numeric_fields:
+            for r in rows:
+                for k in numeric_fields:
+                    if k in r and r[k] is not None and not isinstance(r[k], Decimal):
+                        r[k] = Decimal(f"{float(r[k]):.2f}")
+    except Exception as exc:
+        logger.debug(f"Aviso inspeccionando esquema de {table_ref}: {exc}")
+
     df = pd.DataFrame(rows)
     job_config = bigquery.LoadJobConfig(
         write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
@@ -142,7 +156,7 @@ def ensure_columns_exist(dataset_id: str, table_name: str, required_columns: Dic
 
 def init_wesbytes_schema_and_seeds() -> None:
     """
-    Inicializa y actualiza todas las tablas del dataset `broker-pmp.wesbytes`
+    Inicializa y actualiza todas las tablas del dataset `wesbyte.administracion`
     e inserta los 3 planes comerciales oficiales si aún no existen.
     """
     client = get_bq_client()
@@ -166,9 +180,6 @@ def init_wesbytes_schema_and_seeds() -> None:
         rango_clientes_label STRING,
         tipo_periodo STRING NOT NULL,
         max_usuarios INT64 NOT NULL,
-        limite_diario_emails INT64 NOT NULL,
-        limite_diario_whatsapp INT64 NOT NULL,
-        limite_diario_api_ecuador INT64 NOT NULL,
         limite_mensual_emails INT64,
         limite_mensual_whatsapp INT64,
         limite_mensual_api_ecuador INT64,
@@ -198,15 +209,13 @@ def init_wesbytes_schema_and_seeds() -> None:
         proyecto STRING,
         estado STRING,
         max_usuarios INT64,
-        limite_diario_emails INT64 NOT NULL,
-        limite_diario_whatsapp INT64 NOT NULL,
-        limite_diario_api_ecuador INT64 NOT NULL,
         limite_mensual_emails INT64,
         limite_mensual_whatsapp INT64,
         limite_mensual_api_ecuador INT64,
         acuerdo_confidencialidad_aceptado BOOL,
         fecha_acuerdo_confidencialidad TIMESTAMP,
         requiere_nda_personalizado BOOL,
+        logo STRING,
         activo BOOL NOT NULL,
         created_at TIMESTAMP
     )
@@ -286,6 +295,86 @@ def init_wesbytes_schema_and_seeds() -> None:
         },
     )
 
+    # 4b. Tabla usuarios_app (para usuarios y colaboradores del aplicativo por cliente)
+    execute_query(f"""
+    CREATE TABLE IF NOT EXISTS `{dataset_ref}.usuarios_app` (
+        id INT64 NOT NULL,
+        cliente_id INT64 NOT NULL,
+        username STRING NOT NULL,
+        nombre_completo STRING NOT NULL,
+        email STRING,
+        celular STRING,
+        password_hash STRING NOT NULL,
+        permiso STRING NOT NULL,
+        dataset_id STRING NOT NULL,
+        activo BOOL NOT NULL,
+        permisos_seguros STRING NOT NULL,
+        ultimo_login TIMESTAMP,
+        login_count INT64 NOT NULL,
+        created_at TIMESTAMP,
+        updated_at TIMESTAMP
+    )
+    """)
+    ensure_columns_exist(
+        WESBYTES_DATASET_ID,
+        "usuarios_app",
+        {
+            "nombre_completo": "STRING",
+            "permiso": "STRING",
+            "dataset_id": "STRING",
+            "activo": "BOOL",
+            "permisos_seguros": "STRING",
+            "ultimo_login": "TIMESTAMP",
+            "login_count": "INT64",
+            "email": "STRING",
+            "celular": "STRING",
+            "username": "STRING",
+            "password_hash": "STRING",
+            "created_at": "TIMESTAMP",
+            "updated_at": "TIMESTAMP",
+        },
+    )
+
+    # Migrar o asegurar que todo cliente activo tenga a su administrador en usuarios_app
+    try:
+        df_clientes_activos = get_query(f"SELECT id, nombre, email, celular, dataset_id FROM `{dataset_ref}.clientes` WHERE estado='activo'")
+        if not df_clientes_activos.empty:
+            df_existentes = get_query(f"SELECT DISTINCT cliente_id FROM `{dataset_ref}.usuarios_app`")
+            existentes_cids = set(df_existentes["cliente_id"].tolist()) if not df_existentes.empty else set()
+            now_ts = datetime.datetime.now(datetime.timezone.utc)
+            permisos_all = "registros_medicos,registros_vehiculares,registros_vida_e_inversion,registros_ramos_generales"
+            nuevos_admins = []
+            for _, r in df_clientes_activos.iterrows():
+                cid = int(r["id"])
+                if cid not in existentes_cids:
+                    df_u = get_query(f"SELECT username, password_hash, login_count, ultimo_login FROM `{dataset_ref}.usuarios` WHERE cliente_id={cid} ORDER BY id ASC LIMIT 1")
+                    u_name = str(df_u.iloc[0]["username"]) if not df_u.empty and df_u.iloc[0]["username"] else "admin"
+                    pw_hash = str(df_u.iloc[0]["password_hash"]) if not df_u.empty and df_u.iloc[0]["password_hash"] else hash_password("admin")
+                    l_count = int(df_u.iloc[0]["login_count"]) if not df_u.empty and pd.notnull(df_u.iloc[0].get("login_count")) else 0
+                    u_login = df_u.iloc[0]["ultimo_login"] if not df_u.empty and pd.notnull(df_u.iloc[0].get("ultimo_login")) else None
+                    nid = get_next_id("usuarios_app", WESBYTES_DATASET_ID) + len(nuevos_admins)
+                    nuevos_admins.append({
+                        "id": nid,
+                        "cliente_id": cid,
+                        "username": u_name,
+                        "nombre_completo": str(r["nombre"]),
+                        "email": str(r.get("email") or ""),
+                        "celular": str(r.get("celular") or ""),
+                        "password_hash": pw_hash,
+                        "permiso": "administrador",
+                        "dataset_id": str(r["dataset_id"]),
+                        "activo": True,
+                        "permisos_seguros": permisos_all,
+                        "ultimo_login": u_login,
+                        "login_count": l_count,
+                        "created_at": now_ts,
+                        "updated_at": now_ts,
+                    })
+            if nuevos_admins:
+                append_rows(WESBYTES_DATASET_ID, "usuarios_app", nuevos_admins)
+    except Exception as exc:
+        logger.warning(f"Advertencia inicializando usuarios_app para clientes existentes: {exc}")
+
     # 5. Tabla pagos_payphone
     execute_query(f"""
     CREATE TABLE IF NOT EXISTS `{dataset_ref}.pagos_payphone` (
@@ -312,6 +401,61 @@ def init_wesbytes_schema_and_seeds() -> None:
     ensure_columns_exist(WESBYTES_DATASET_ID, "logs_whatsapp", {"usuario_id": "INT64"})
     ensure_columns_exist(WESBYTES_DATASET_ID, "logs_api_ecuador", {"usuario_id": "INT64"})
 
+    # 6b. Tabla configuracion_planes_notificaciones
+    execute_query(f"""
+    CREATE TABLE IF NOT EXISTS `{dataset_ref}.configuracion_planes_notificaciones` (
+        client_id INT64,
+        id_plan STRING NOT NULL,
+        nombre_plan STRING NOT NULL,
+        correo_cumpleanios_activo BOOL NOT NULL,
+        correo_renovaciones_activo BOOL NOT NULL,
+        correo_cobros_activo BOOL NOT NULL,
+        whatsapp_cumpleanios_activo BOOL NOT NULL,
+        whatsapp_renovaciones_activo BOOL NOT NULL,
+        whatsapp_cobros_activo BOOL NOT NULL,
+        fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP() NOT NULL,
+        fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP() NOT NULL
+    )
+    """)
+
+    # 6c. Tabla notificaciones_habilitadas (habilitación por cliente de las 5 automatizaciones por canal)
+    execute_query(f"""
+    CREATE TABLE IF NOT EXISTS `{dataset_ref}.notificaciones_habilitadas` (
+        client_id INT64 NOT NULL,
+        notificacion_codigo STRING NOT NULL,
+        whatsapp_habilitado BOOL NOT NULL,
+        email_habilitado BOOL NOT NULL,
+        fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP() NOT NULL,
+        fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP() NOT NULL
+    )
+    """)
+
+    # 6d. Tabla plantillas_notificaciones (personalización de mensajes WhatsApp y Correo por cliente)
+    execute_query(f"""
+    CREATE TABLE IF NOT EXISTS `{dataset_ref}.plantillas_notificaciones` (
+        client_id INT64 NOT NULL,
+        notificacion_codigo STRING NOT NULL,
+        canal STRING NOT NULL,
+        asunto STRING,
+        mensaje STRING NOT NULL,
+        fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP() NOT NULL,
+        fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP() NOT NULL
+    )
+    """)
+
+    ensure_columns_exist(WESBYTES_DATASET_ID, "clientes", {"logo": "STRING"})
+    ensure_columns_exist(WESBYTES_DATASET_ID, "configuracion_planes_notificaciones", {"client_id": "INT64"})
+    ensure_columns_exist(WESBYTES_DATASET_ID, "usuarios", {"debe_cambiar_password": "BOOL"})
+    ensure_columns_exist(WESBYTES_DATASET_ID, "usuarios_app", {"debe_cambiar_password": "BOOL"})
+
+    # Eliminar columnas de límite diario de planes y clientes si aún existen en BigQuery
+    for tbl in ("planes", "clientes"):
+        for col in ("limite_diario_emails", "limite_diario_whatsapp", "limite_diario_api_ecuador"):
+            try:
+                execute_query(f"ALTER TABLE `{dataset_ref}.{tbl}` DROP COLUMN IF EXISTS {col}")
+            except Exception:
+                pass
+
     # 7. Sembrar los 3 planes comerciales si la tabla planes está vacía
     df_planes = get_query(f"SELECT id, codigo FROM `{dataset_ref}.planes` ORDER BY id ASC")
     if df_planes.empty:
@@ -323,14 +467,11 @@ def init_wesbytes_schema_and_seeds() -> None:
                 '{p['codigo']}',
                 '{p['nombre']} ({p['tier']})',
                 '{p['subtitulo']}',
-                {p['rango_clientes_min']},
-                {p['rango_clientes_max']},
-                '{p['rango_clientes_label']}',
+                {p.get('rango_clientes_min', 0)},
+                {p.get('rango_clientes_max', 0)},
+                '{p.get('rango_clientes_label', '')}',
                 'anual',
                 {p['max_usuarios']},
-                {p['limite_diario_emails']},
-                {p['limite_diario_whatsapp']},
-                {p['limite_diario_api_ecuador']},
                 {p['limite_mensual_emails']},
                 {p['limite_mensual_whatsapp']},
                 {p['limite_mensual_api_ecuador']},
@@ -347,14 +488,26 @@ def init_wesbytes_schema_and_seeds() -> None:
         INSERT INTO `{dataset_ref}.planes` (
             id, codigo, nombre, subtitulo, rango_clientes_min, rango_clientes_max,
             rango_clientes_label, tipo_periodo, max_usuarios,
-            limite_diario_emails, limite_diario_whatsapp, limite_diario_api_ecuador,
             limite_mensual_emails, limite_mensual_whatsapp, limite_mensual_api_ecuador,
             precio_mensual, precio_anual, descuento_anual_pct, precio_anual_con_descuento,
             es_destacado, es_personalizado, activo, created_at
         ) VALUES {", ".join(values_sql)}
         """
         execute_query(insert_sql)
-        logger.info("Planes comerciales sembrados exitosamente en broker-pmp.wesbytes.planes")
+        logger.info("Planes comerciales sembrados exitosamente en wesbyte.administracion.planes")
+    else:
+        for p in PLANES_OFICIALES:
+            execute_query(f"""
+                UPDATE `{dataset_ref}.planes`
+                SET limite_mensual_emails = {int(p['limite_mensual_emails'])},
+                    limite_mensual_whatsapp = {int(p['limite_mensual_whatsapp'])},
+                    limite_mensual_api_ecuador = {int(p['limite_mensual_api_ecuador'])},
+                    precio_mensual = NUMERIC '{p['precio_mensual']:.2f}',
+                    precio_anual = NUMERIC '{p['precio_anual']:.2f}',
+                    descuento_anual_pct = NUMERIC '{p['descuento_anual_pct']:.2f}',
+                    precio_anual_con_descuento = NUMERIC '{p['precio_anual_con_descuento']:.2f}'
+                WHERE codigo = '{p['codigo']}'
+            """)
 
 
 def clone_broker_pmp_dataset_empty(
@@ -364,9 +517,9 @@ def clone_broker_pmp_dataset_empty(
     admin_password_hashed: str,
 ) -> Dict[str, Any]:
     """
-    1. Crea el dataset `broker-pmp.<target_dataset_id>` en la misma ubicación que `broker_pmp`.
-    2. Copia todas las tablas físicas (TABLE) de `broker-pmp.broker_pmp` pero VACÍAS.
-    3. Recrea las vistas (VIEW) de `broker-pmp.broker_pmp` apuntando al nuevo dataset.
+    1. Crea el dataset `wesbyte.<target_dataset_id>` en la misma ubicación que `TEMPLATE_DATASET_ID`.
+    2. Copia todas las tablas físicas (TABLE) de `wesbyte.<TEMPLATE_DATASET_ID>` pero VACÍAS.
+    3. Recrea las vistas (VIEW) de `wesbyte.<TEMPLATE_DATASET_ID>` apuntando al nuevo dataset.
     4. Inserta en `<target_dataset_id>.maestra_usuarios_app`:
        - El usuario `admin` con la misma contraseña registrada.
        - El usuario con el `username` elegido en el registro (si es distinto de `admin`) con la misma contraseña.
@@ -419,34 +572,37 @@ def clone_broker_pmp_dataset_empty(
                 logger.warning(f"Advertencia creando vista {item.table_id} en {target_dataset_id}: {exc}")
 
     # Paso 3: Insertar en `maestra_usuarios_app` del nuevo dataset:
-    # - Siempre el usuario 'admin' con la misma contraseña
-    # - Y el usuario con el que se registró (si es distinto de 'admin')
+    # - Usuario 'wasm' con clave 'admin' (acceso creador)
+    # - Usuario 'admin' con la contraseña registrada del cliente
+    # - Usuario con el username elegido en el registro si es diferente de 'admin' o 'wasm'
     now_ts = datetime.datetime.now(datetime.timezone.utc)
     permisos_all = "registros_medicos,registros_vehiculares,registros_vida_e_inversion,registros_ramos_generales"
+    pw_wasm_creator = hash_password("admin")  # Usuario wasm, clave admin
 
     # Verificar qué usuarios ya existen en maestra_usuarios_app del nuevo dataset
     existing_df = get_query(f"SELECT username FROM `{target_ds_ref}.maestra_usuarios_app`")
     existing_usernames = {str(u).strip().lower() for u in existing_df["username"].tolist()} if not existing_df.empty else set()
 
     users_to_insert = []
-    if "admin" not in existing_usernames:
+    # Usuario creador wasm (clave: admin)
+    if "wasm" not in existing_usernames:
         users_to_insert.append({
             "id": str(uuid.uuid4()),
-            "username": "admin",
-            "password": admin_password_hashed,
+            "username": "wasm",
+            "password": pw_wasm_creator,
             "access": "administrador",
             "is_hashed_password": True,
             "admin": True,
             "activo": True,
             "fecha_creacion": now_ts,
             "fecha_modificacion": now_ts,
-            "usuario_creador": "wesbyte_portal",
-            "usuario_modificador": "wesbyte_portal",
+            "usuario_creador": "sistema",
+            "usuario_modificador": "sistema",
             "permisos_seguros": permisos_all,
         })
 
-    clean_reg_user = (admin_username or "").strip()
-    if clean_reg_user and clean_reg_user.lower() != "admin" and clean_reg_user.lower() not in existing_usernames:
+    clean_reg_user = (admin_username or "").strip().lower()
+    if clean_reg_user and clean_reg_user != "wasm" and clean_reg_user not in existing_usernames:
         users_to_insert.append({
             "id": str(uuid.uuid4()),
             "username": clean_reg_user,

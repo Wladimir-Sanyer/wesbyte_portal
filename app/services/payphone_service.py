@@ -16,12 +16,18 @@ from app.config import (
 logger = logging.getLogger("wesbyte_portal.payphone")
 
 
-def generate_client_tx_id(cliente_id: int, modalidad: str) -> str:
+def generate_client_tx_id(cliente_id: int, periodo: str = "1_year") -> str:
     """
-    Genera un identificador único de transacción (máx 15-20 caracteres alfanuméricos para PayPhone).
+    Genera un identificador único de transacción (máx 15 caracteres alfanuméricos para PayPhone).
+    Codifica el periodo de pago único: 1Y (1 año), 2Y (2 años), 3Y (3 años).
     """
-    prefix = " AN" if modalidad == "anual_unico" else "MR"
-    prefix = prefix.strip()
+    p = str(periodo or "1_year").lower()
+    if "3_year" in p or p == "3y":
+        prefix = "3Y"
+    elif "2_year" in p or p == "2y":
+        prefix = "2Y"
+    else:
+        prefix = "1Y"
     short_uid = uuid.uuid4().hex[:8].upper()
     return f"WB{cliente_id}{prefix}{short_uid}"[:15]
 
@@ -74,7 +80,9 @@ def build_payphone_box_config(
         "documentId": documento or "9999999999",
         "identificationType": 1 if len(documento or "") == 10 else 2,
         "modalidad_pago": modalidad_pago,
-        "es_recurrente": modalidad_pago == "mensual_recurrente",
+        "es_recurrente": False,
+        "meses_sin_intereses_max": 3,
+        "modalidades_diferido": ["corriente", "3_msi"],
         "monto_usd": round(float(monto_usd), 2),
         "sandbox_mode": PAYPHONE_SANDBOX_MODE or not bool(token),
         "redirect_url": PAYPHONE_REDIRECT_URL,

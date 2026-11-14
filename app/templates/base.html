@@ -4,6 +4,8 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
   <title>{% block title %}Wesbyte · Automatiza tu negocio y olvídate de los reprocesos{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/wesbyte-isotipo-wave-sine.svg"/>
+  <link rel="apple-touch-icon" href="/static/img/wesbyte-logo-wave-sine-integrated.png"/>
 
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/css/tabler.min.css"/>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
@@ -18,9 +20,10 @@
   <div class="page">
     <header class="navbar navbar-expand-md navbar-dark navbar-wesbyte sticky-top py-2">
       <div class="container-xl">
-        <a href="/" class="navbar-brand d-flex align-items-center text-white text-decoration-none">
-          <img src="/static/img/logo.svg" alt="Wesbyte" style="height: 34px;" class="me-2" onerror="this.style.display='none'">
-          <span class="fw-black fs-2" style="font-weight:900;letter-spacing:-.03em;">Wesbyte</span>
+        <a href="/" class="navbar-brand d-flex align-items-center text-decoration-none py-0">
+          <span class="d-inline-flex align-items-center justify-content-center bg-white shadow-sm" style="border-radius: 12px; height: 48px; padding: 0 14px; overflow: hidden;">
+            <img src="/static/img/wesbyte-logo-wave-sine-integrated.svg" alt="Wesbyte" style="height: 82px; width: auto; display: block; margin: 0 -58px 0 -14px;">
+          </span>
         </a>
         <div class="d-flex align-items-center gap-1 flex-wrap">
           <a href="/#beneficios" class="nav-link-top d-none d-md-inline">Beneficios</a>
@@ -55,6 +58,9 @@
               </p>
             </div>
             <div class="col-md-5 text-md-end text-muted small">
+              <div class="mb-1" style="overflow: hidden; height: 34px; display: inline-flex; align-items: center;">
+                <img src="/static/img/wesbyte-logo-wave-sine-integrated.svg" alt="Wesbyte" style="height: 52px; width: auto; margin-right: -8px;">
+              </div>
               <div>Wesbyte {{ app_version or 'v1.0.0' }} · Pagos seguros con <strong>PayPhone</strong></div>
               <div>© 2026 Wesbyte. Todos los derechos reservados.</div>
             </div>

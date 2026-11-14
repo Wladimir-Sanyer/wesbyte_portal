@@ -1,13 +1,13 @@
 -- ============================================================================
 -- WESBYTE PORTAL & MULTI-TENANT SAAS SCHEMA (MEJORADO)
--- PROYECTO: broker-pmp
--- DATASET: wesbytes
+-- PROYECTO: wesbyte
+-- DATASET: administracion
 -- ============================================================================
 
 -- ============================================================================
 -- 1. CATÁLOGO COMERCIAL Y PLANES (ESTÁNDAR Y PERSONALIZADOS)
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.planes` (
+CREATE TABLE IF NOT EXISTS `wesbyte.administracion.planes` (
     id INT64 NOT NULL,
     codigo STRING NOT NULL,                       -- 'PRIME_BRONZE', 'MEDIUM_SILVER', 'SUPER_GOLD', 'CUSTOM'
     nombre STRING NOT NULL,                       -- 'Plan Prime (Bronze)', 'Plan Medium (Silver)', 'Plan Super (Gold)'
@@ -17,9 +17,6 @@ CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.planes` (
     rango_clientes_label STRING,                  -- '20 - 50 clientes mensuales'
     tipo_periodo STRING DEFAULT 'anual' NOT NULL, -- 'anual', 'mensual', 'ambos'
     max_usuarios INT64 DEFAULT 1 NOT NULL,        -- Límite de usuarios permitidos (1, 3, 5, N)
-    limite_diario_emails INT64 DEFAULT 10 NOT NULL,
-    limite_diario_whatsapp INT64 DEFAULT 10 NOT NULL,
-    limite_diario_api_ecuador INT64 DEFAULT 15 NOT NULL,
     limite_mensual_emails INT64 NOT NULL,         -- 50, 100, 200
     limite_mensual_whatsapp INT64 NOT NULL,       -- 50, 100, 300
     limite_mensual_api_ecuador INT64 NOT NULL,    -- 50, 200, 400
@@ -36,7 +33,7 @@ CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.planes` (
 -- ============================================================================
 -- 2. TENANTS / CLIENTES CORPORATIVOS
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.clientes` (
+CREATE TABLE IF NOT EXISTS `wesbyte.administracion.clientes` (
     id INT64 NOT NULL,
     plan_id INT64 NOT NULL,                       -- Plan activo contratado
     nombre STRING NOT NULL,                       -- Razón social / Nombre de la empresa
@@ -46,18 +43,16 @@ CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.clientes` (
     celular STRING,                               -- Celular / WhatsApp de contacto
     ciudad STRING,                                -- Ciudad / País
     dataset_id STRING NOT NULL,                   -- Dataset asignado en BigQuery (ej. 'seguros_aguila')
-    proyecto STRING DEFAULT 'broker-pmp',         -- Proyecto GCP donde reside el dataset
+    proyecto STRING DEFAULT 'wesbyte',         -- Proyecto GCP donde reside el dataset
     estado STRING DEFAULT 'activo' NOT NULL,      -- 'pendiente_pago', 'activo', 'por_vencer', 'vencido', 'cancelado'
     max_usuarios INT64 DEFAULT 1 NOT NULL,
-    limite_diario_emails INT64 DEFAULT 30 NOT NULL,
-    limite_diario_whatsapp INT64 DEFAULT 100 NOT NULL,
-    limite_diario_api_ecuador INT64 DEFAULT 200 NOT NULL,
     limite_mensual_emails INT64,
     limite_mensual_whatsapp INT64,
     limite_mensual_api_ecuador INT64,
     acuerdo_confidencialidad_aceptado BOOL DEFAULT TRUE NOT NULL,
     fecha_acuerdo_confidencialidad TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
     requiere_nda_personalizado BOOL DEFAULT FALSE,
+    logo STRING,
     activo BOOL DEFAULT TRUE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
 );
@@ -65,7 +60,7 @@ CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.clientes` (
 -- ============================================================================
 -- 3. SUSCRIPCIONES Y VIGENCIAS (ANUAL PAGO ÚNICO O MENSUAL RECURRENTE)
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.suscripciones` (
+CREATE TABLE IF NOT EXISTS `wesbyte.administracion.suscripciones` (
     id INT64 NOT NULL,
     cliente_id INT64 NOT NULL,
     plan_id INT64 NOT NULL,
@@ -94,7 +89,7 @@ CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.suscripciones` (
 -- ============================================================================
 -- 4. USUARIOS Y CREDENCIALES POR CLIENTE (PORTAL Y MULTI-TENANT)
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.usuarios` (
+CREATE TABLE IF NOT EXISTS `wesbyte.administracion.usuarios` (
     id INT64 NOT NULL,
     cliente_id INT64 NOT NULL,
     username STRING NOT NULL,                     -- Nombre de usuario para login en la app
@@ -105,6 +100,7 @@ CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.usuarios` (
     rol STRING DEFAULT 'admin' NOT NULL,          -- 'admin', 'operador', 'consulta'
     dataset_id STRING,                            -- Dataset del tenant al que pertenece
     activo BOOL DEFAULT TRUE NOT NULL,
+    debe_cambiar_password BOOL DEFAULT FALSE,
     ultimo_login TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
 );
@@ -112,7 +108,7 @@ CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.usuarios` (
 -- ============================================================================
 -- 5. TRANSACCIONES Y AUDITORÍA DE PAGOS PAYPHONE
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.pagos_payphone` (
+CREATE TABLE IF NOT EXISTS `wesbyte.administracion.pagos_payphone` (
     id INT64 NOT NULL,
     cliente_id INT64 NOT NULL,
     suscripcion_id INT64,
@@ -133,7 +129,7 @@ CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.pagos_payphone` (
 -- ============================================================================
 -- 6. CONSUMOS DIARIOS (CONTROL ATÓMICO EN TIEMPO REAL)
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.consumos_diarios` (
+CREATE TABLE IF NOT EXISTS `wesbyte.administracion.consumos_diarios` (
     id INT64 NOT NULL,
     cliente_id INT64 NOT NULL,
     fecha DATE DEFAULT CURRENT_DATE() NOT NULL,
@@ -149,7 +145,7 @@ CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.consumos_diarios` (
 -- ============================================================================
 -- 7. CONSUMOS MENSUALES (HISTÓRICO Y CIERRE)
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.consumos_mensuales` (
+CREATE TABLE IF NOT EXISTS `wesbyte.administracion.consumos_mensuales` (
     id INT64 NOT NULL,
     cliente_id INT64 NOT NULL,
     periodo STRING NOT NULL,                      -- Formato 'YYYY-MM' (ej. '2026-11')
@@ -165,7 +161,7 @@ CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.consumos_mensuales` (
 -- ============================================================================
 -- 8. AUDITORÍA Y LOGS TRANSACCIONALES
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.logs_emails` (
+CREATE TABLE IF NOT EXISTS `wesbyte.administracion.logs_emails` (
     id INT64 NOT NULL,
     cliente_id INT64 NOT NULL,
     usuario_id INT64,
@@ -176,7 +172,7 @@ CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.logs_emails` (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
 );
 
-CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.logs_whatsapp` (
+CREATE TABLE IF NOT EXISTS `wesbyte.administracion.logs_whatsapp` (
     id INT64 NOT NULL,
     cliente_id INT64 NOT NULL,
     usuario_id INT64,
@@ -187,7 +183,7 @@ CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.logs_whatsapp` (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
 );
 
-CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.logs_api_ecuador` (
+CREATE TABLE IF NOT EXISTS `wesbyte.administracion.logs_api_ecuador` (
     id INT64 NOT NULL,
     cliente_id INT64 NOT NULL,
     usuario_id INT64,
@@ -197,4 +193,23 @@ CREATE TABLE IF NOT EXISTS `broker-pmp.wesbytes.logs_api_ecuador` (
     tiempo_respuesta_ms INT64 NOT NULL,
     bloqueado_por_limite BOOL DEFAULT FALSE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
+);
+
+CREATE TABLE IF NOT EXISTS `wesbyte.administracion.notificaciones_habilitadas` (
+    client_id INT64 NOT NULL,
+    notificacion_codigo STRING NOT NULL,
+    whatsapp_habilitado BOOL NOT NULL,
+    email_habilitado BOOL NOT NULL,
+    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP() NOT NULL,
+    fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS `wesbyte.administracion.plantillas_notificaciones` (
+    client_id INT64 NOT NULL,
+    notificacion_codigo STRING NOT NULL,
+    canal STRING NOT NULL,
+    asunto STRING,
+    mensaje STRING NOT NULL,
+    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP() NOT NULL,
+    fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP() NOT NULL
 );

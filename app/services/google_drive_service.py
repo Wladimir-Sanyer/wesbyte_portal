@@ -1,0 +1,166 @@
+import json
+import logging
+import uuid
+from typing import Dict, Optional
+import httpx
+
+from app.config import (
+    GOOGLE_DRIVE_CLIENT_ID,
+    GOOGLE_DRIVE_CLIENT_SECRET,
+    GOOGLE_DRIVE_REFRESH_TOKEN,
+)
+
+logger = logging.getLogger("wesbyte_portal.services.google_drive")
+
+
+class GoogleDriveServiceError(Exception):
+    """Error al interactuar con Google Drive."""
+    pass
+
+
+class GoogleDriveService:
+    """Servicio para gestionar carpetas y subir logos de clientes a Google Drive."""
+
+    TOKEN_URL = "https://oauth2.googleapis.com/token"
+    FILES_URL = "https://www.googleapis.com/drive/v3/files"
+    UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files"
+
+    def __init__(
+        self,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
+        refresh_token: Optional[str] = None,
+    ):
+        self.client_id = (client_id or GOOGLE_DRIVE_CLIENT_ID or "").strip()
+        self.client_secret = (client_secret or GOOGLE_DRIVE_CLIENT_SECRET or "").strip()
+        self.refresh_token = (refresh_token or GOOGLE_DRIVE_REFRESH_TOKEN or "").strip()
+
+    def _get_access_token(self) -> str:
+        if not self.client_id or not self.client_secret or not self.refresh_token:
+            raise GoogleDriveServiceError(
+                "Faltan credenciales de Google Drive (GOOGLE_DRIVE_CLIENT_ID / SECRET / REFRESH_TOKEN)."
+            )
+        resp = httpx.post(
+            self.TOKEN_URL,
+            data={
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "refresh_token": self.refresh_token,
+                "grant_type": "refresh_token",
+            },
+            timeout=20.0,
+        )
+        if resp.status_code >= 400:
+            raise GoogleDriveServiceError(f"Error obteniendo access_token de Google Drive: {resp.text}")
+        token = resp.json().get("access_token")
+        if not token:
+            raise GoogleDriveServiceError("Google OAuth2 no devolvió access_token.")
+        return token
+
+    def _find_or_create_folder(self, name: str, parent_id: Optional[str], token: str) -> str:
+        headers = {"Authorization": f"Bearer {token}"}
+        safe_name = name.replace("'", "\\'")
+        q_parts = [
+            f"name='{safe_name}'",
+            "mimeType='application/vnd.google-apps.folder'",
+            "trashed=false",
+        ]
+        if parent_id:
+            q_parts.append(f"'{parent_id}' in parents")
+        else:
+            q_parts.append("'root' in parents")
+
+        resp = httpx.get(
+            self.FILES_URL,
+            headers=headers,
+            params={"q": " and ".join(q_parts), "fields": "files(id,name)", "pageSize": 1},
+            timeout=20.0,
+        )
+        if resp.status_code >= 400:
+            raise GoogleDriveServiceError(f"Error buscando carpeta '{name}' en Drive: {resp.text}")
+        files = resp.json().get("files", [])
+        if files:
+            return files[0]["id"]
+
+        metadata: Dict[str, object] = {
+            "name": name,
+            "mimeType": "application/vnd.google-apps.folder",
+        }
+        if parent_id:
+            metadata["parents"] = [parent_id]
+
+        create_resp = httpx.post(
+            self.FILES_URL,
+            headers={**headers, "Content-Type": "application/json"},
+            json=metadata,
+            params={"fields": "id,name"},
+            timeout=20.0,
+        )
+        if create_resp.status_code >= 400:
+            raise GoogleDriveServiceError(f"Error creando carpeta '{name}' en Drive: {create_resp.text}")
+        return create_resp.json()["id"]
+
+    def ensure_folder_path(self, folder_path: str = "clientes/logos", token: Optional[str] = None) -> str:
+        """Asegura la jerarquía de carpetas (ej. clientes/logos) y retorna el ID de la carpeta final."""
+        tok = token or self._get_access_token()
+        parent_id: Optional[str] = None
+        for part in [p.strip() for p in folder_path.split("/") if p.strip()]:
+            parent_id = self._find_or_create_folder(part, parent_id, tok)
+        if not parent_id:
+            raise GoogleDriveServiceError("La ruta de carpeta en Drive no puede estar vacía.")
+        return parent_id
+
+    def upload_logo(
+        self,
+        file_bytes: bytes,
+        filename: str,
+        mime_type: str = "image/png",
+        folder_path: str = "clientes/logos",
+    ) -> Dict[str, str]:
+        """Sube un logo a Google Drive dentro de clientes/logos, lo hace público y retorna su URL."""
+        token = self._get_access_token()
+        folder_id = self.ensure_folder_path(folder_path, token=token)
+
+        boundary = f"wesbyte_{uuid.uuid4().hex}"
+        metadata = json.dumps({"name": filename, "parents": [folder_id]}).encode("utf-8")
+        body = (
+            f"--{boundary}\r\n"
+            f"Content-Type: application/json; charset=UTF-8\r\n\r\n"
+        ).encode("utf-8") + metadata + (
+            f"\r\n--{boundary}\r\n"
+            f"Content-Type: {mime_type}\r\n\r\n"
+        ).encode("utf-8") + file_bytes + f"\r\n--{boundary}--\r\n".encode("utf-8")
+
+        upload_resp = httpx.post(
+            self.UPLOAD_URL,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": f"multipart/related; boundary={boundary}",
+            },
+            params={"uploadType": "multipart", "fields": "id,name,webViewLink,webContentLink"},
+            content=body,
+            timeout=30.0,
+        )
+        if upload_resp.status_code >= 400:
+            raise GoogleDriveServiceError(f"Error subiendo archivo a Drive: {upload_resp.text}")
+
+        data = upload_resp.json()
+        file_id = data["id"]
+
+        # Permitir lectura pública para que pueda renderizarse en correos y portal
+        perm_resp = httpx.post(
+            f"{self.FILES_URL}/{file_id}/permissions",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json={"role": "reader", "type": "anyone"},
+            timeout=20.0,
+        )
+        if perm_resp.status_code >= 400:
+            logger.warning(f"No se pudo asignar permiso público al archivo {file_id}: {perm_resp.text}")
+
+        public_url = f"https://drive.google.com/uc?export=view&id={file_id}"
+        return {
+            "file_id": file_id,
+            "filename": data.get("name", filename),
+            "url": public_url,
+            "web_view_link": data.get("webViewLink", ""),
+        }

@@ -29,43 +29,40 @@
         </div>
 
         <div class="card-body p-4">
-          <!-- Las 2 Opciones de Cobro con PayPhone -->
+          <!-- Las 3 Opciones de Pago Único con PayPhone -->
           <div class="row g-3 mb-4">
-            <!-- Opción A: 1 Solo Pago Anual con 10% de Descuento -->
-            <div class="col-md-6">
-              <div id="optCardAnual" class="advisor-btn active h-100 position-relative" onclick="seleccionarModalidadCheckout('anual_unico')">
+            {% for p_key in ["1_year", "2_years", "3_years"] %}
+            {% set pm = periodos_montos[p_key] %}
+            <div class="col-md-4">
+              <div id="optCard_{{ p_key }}" class="advisor-btn {% if periodo_inicial == p_key %}active{% endif %} h-100 position-relative" onclick="seleccionarPeriodoCheckout('{{ p_key }}')">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                  <span class="badge bg-green text-white fw-bold">AHORRA 10%</span>
-                  <input type="radio" name="modalidad_checkout" id="radAnual" class="form-check-input" checked>
+                  {% if pm.descuento_pct > 0 %}
+                  <span class="badge bg-green text-white fw-bold">-{{ "%.0f"|format(pm.descuento_pct) }}% OFF</span>
+                  {% else %}
+                  <span class="badge bg-azure-lt text-azure fw-bold">PAGO ÚNICO</span>
+                  {% endif %}
+                  <input type="radio" name="periodo_checkout" id="rad_{{ p_key }}" class="form-check-input" {% if periodo_inicial == p_key %}checked{% endif %}>
                 </div>
-                <div class="fw-bold text-dark fs-3 mb-1">1 Solo Pago Anual</div>
+                <div class="fw-bold text-dark fs-3 mb-1">{{ pm.label }}</div>
                 <div class="d-flex align-items-baseline gap-2 mb-1">
-                  <span class="fs-1 fw-extrabold text-primary">${{ "%.2f"|format(plan.precio_anual_con_descuento) }}</span>
-                  <span class="text-muted text-decoration-line-through small">${{ "%.2f"|format(plan.precio_anual) }}</span>
+                  <span class="fs-1 fw-extrabold text-primary">${{ "{:,.2f}".format(pm.total) }}</span>
+                  {% if pm.ahorro > 0 %}
+                  <span class="text-muted text-decoration-line-through small">${{ "{:,.2f}".format(pm.subtotal) }}</span>
+                  {% endif %}
                 </div>
-                <div class="text-success small fw-semibold">
-                  Descuento inmediato de ${{ "%.2f"|format(plan.ahorro_anual) }} USD (equivale a ${{ "%.2f"|format(plan.equivalente_mensual_anual) }}/mes)
+                <div class="{% if pm.ahorro > 0 %}text-success fw-semibold{% else %}text-muted{% endif %} small">
+                  {% if pm.ahorro > 0 %}
+                  Ahorras ${{ "{:,.2f}".format(pm.ahorro) }} (${{ "%.2f"|format(pm.por_mes) }}/mes)
+                  {% else %}
+                  Equivale a ${{ "%.2f"|format(pm.por_mes) }}/mes
+                  {% endif %}
+                </div>
+                <div class="text-primary small fw-bold mt-1">
+                  <i class="ti ti-credit-card me-1"></i> Corriente o 3 MSI (${{ "{:,.2f}".format(pm.cuota_msi_3) }}/mes)
                 </div>
               </div>
             </div>
-
-            <!-- Opción B: Pago Mensual Recurrente -->
-            <div class="col-md-6">
-              <div id="optCardMensual" class="advisor-btn h-100 position-relative" onclick="seleccionarModalidadCheckout('mensual_recurrente')">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                  <span class="badge bg-azure-lt text-azure fw-bold">SUSCRIPCIÓN MENSUAL</span>
-                  <input type="radio" name="modalidad_checkout" id="radMensual" class="form-check-input">
-                </div>
-                <div class="fw-bold text-dark fs-3 mb-1">Pago Mensual Recurrente</div>
-                <div class="d-flex align-items-baseline gap-2 mb-1">
-                  <span class="fs-1 fw-extrabold text-dark">${{ "%.2f"|format(plan.precio_mensual) }}</span>
-                  <span class="text-muted small">/ mes</span>
-                </div>
-                <div class="text-muted small">
-                  Débito automático mensual vía PayPhone (${{ "%.2f"|format(plan.precio_anual) }} anuales)
-                </div>
-              </div>
-            </div>
+            {% endfor %}
           </div>
 
           <!-- Caja de Pasarela PayPhone -->
@@ -85,10 +82,41 @@
               </span>
             </div>
 
-            <!-- Contenedor para la Cajita de Pagos Oficial de PayPhone si hay Token configurado -->
-            <div id="pp-button" class="mb-3"></div>
+            <!-- Acuerdo y Condiciones Legales antes de pagar -->
+            <div class="mb-4 p-3 rounded-3 border bg-light">
+              <div class="fw-bold text-dark mb-2">
+                <i class="ti ti-file-certificate text-primary me-1"></i> Acuerdo de Servicio, Términos y Condiciones Legales
+              </div>
+              <ul class="small text-muted mb-2 ps-3" style="line-height:1.55;">
+                <li><strong>Ningún plan incluye envío de promociones o venta por WhatsApp</strong>; sin embargo, puedes cotizar dicho servicio adicionalmente.</li>
+                <li><strong>Desarrollos personalizados:</strong> cualquier funcionalidad o integración a la medida fuera del estándar del plan tendrá un valor extra previa cotización.</li>
+                <li><strong>Copia de base de datos:</strong> si al finalizar el contrato deseas una copia exportada de tu base de datos, tendrá un valor extra de extracción y entrega.</li>
+                <li><strong>Acceso a APIs:</strong> las consultas API estarán habilitadas única y exclusivamente para clientes con plan activo y pagos al día.</li>
+                <li><strong>Retención de datos (3 años):</strong> luego de 3 años de finalizar el contrato del plan, todos tus datos y respaldos serán eliminados de forma permanente e irreversible.</li>
+              </ul>
+              <div class="mb-2">
+                <a href="javascript:void(0)" class="small fw-bold text-primary text-decoration-none" data-bs-toggle="modal" data-bs-target="#modalTerminosLegales">
+                  <i class="ti ti-eye me-1"></i> Leer acuerdo y condiciones completas
+                </a>
+              </div>
+              <label class="form-check mb-0">
+                <input class="form-check-input" type="checkbox" id="chkAceptoTerminos" onchange="actualizarEstadoCajitaPayphone()">
+                <span class="form-check-label small fw-bold text-dark">
+                  He leído y acepto los Términos y Condiciones Legales del servicio Wesbyte antes de realizar mi pago.
+                </span>
+              </label>
+            </div>
 
-            <!-- Pestañas de Pago Directo PayPhone (Tarjeta / App PayPhone Celular) -->
+            <!-- Contenedor para la Cajita de Pagos Oficial de PayPhone -->
+            <div class="position-relative mb-3" id="ppButtonWrapper">
+              <div id="ppOverlayBloqueo" class="alert alert-warning py-2 px-3 small fw-bold mb-2">
+                <i class="ti ti-lock me-1"></i> Marca la casilla de Términos y Condiciones arriba para habilitar el botón de pago PayPhone.
+              </div>
+              <div id="pp-button" style="opacity:0.45;pointer-events:none;transition:opacity .2s;"></div>
+            </div>
+
+            {% if payphone_sandbox %}
+            <!-- Pestañas de Simulación Local (solo visibles en modo Sandbox / Pruebas) -->
             <ul class="nav nav-tabs nav-fill mb-3 bg-white rounded-3 p-1 border" role="tablist">
               <li class="nav-item" role="presentation">
                 <button class="nav-link active fw-bold rounded-2" data-bs-toggle="tab" data-bs-target="#tab-payphone-app" type="button">
@@ -177,6 +205,7 @@
                 </div>
               </div>
             </div>
+            {% endif %}
           </div>
         </div>
       </div>
@@ -200,27 +229,24 @@
             <span class="badge bg-azure-lt">ID #{{ reg.cliente_id }}</span>
           </div>
 
-          <!-- Qué se creará automáticamente en BigQuery al confirmar el pago -->
+          <!-- Activación y Garantías -->
           <div class="mb-3 pb-3 border-bottom">
-            <div class="text-uppercase text-muted small fw-bold mb-2">Acciones automáticas tras verificar el pago:</div>
-            <ul class="list-unstyled space-y-2 small mb-0">
-              <li class="d-flex align-items-start gap-2">
-                <i class="ti ti-database-plus text-primary fs-3 mt-1"></i>
-                <div>
-                  Creación del dataset <code>{{ reg.dataset_id }}</code> (en minúscula, sin espacios ni tildes).
-                </div>
+            <div class="d-flex align-items-center gap-2 mb-2 text-success fw-bold">
+              <i class="ti ti-circle-check fs-2"></i>
+              <span>Activación inmediata de tu plataforma</span>
+            </div>
+            <ul class="list-unstyled space-y-2 small mb-0 text-muted">
+              <li class="d-flex align-items-center gap-2">
+                <i class="ti ti-shield-lock text-primary fs-3"></i>
+                <span>Base de datos privada y protegida en la nube.</span>
               </li>
-              <li class="d-flex align-items-start gap-2 mt-2">
-                <i class="ti ti-table-import text-success fs-3 mt-1"></i>
-                <div>
-                  Clonación de todas las tablas maestras y de pólizas vacías y listas para usar.
-                </div>
+              <li class="d-flex align-items-center gap-2 mt-2">
+                <i class="ti ti-bolt text-warning fs-3"></i>
+                <span>Automatizaciones listas para enviar WhatsApp y correos.</span>
               </li>
-              <li class="d-flex align-items-start gap-2 mt-2">
-                <i class="ti ti-user-shield text-warning fs-3 mt-1"></i>
-                <div>
-                  Creación del usuario <code>admin</code> y de tu usuario <code>{{ reg.username }}</code> con tu misma contraseña en tu aplicación.
-                </div>
+              <li class="d-flex align-items-center gap-2 mt-2">
+                <i class="ti ti-certificate text-azure fs-3"></i>
+                <span>Acuerdo de confidencialidad y custodia exclusiva de tus datos.</span>
               </li>
             </ul>
           </div>
@@ -256,69 +282,103 @@
     </div>
   </div>
 </div>
+
+<!-- MODAL TÉRMINOS Y CONDICIONES LEGALES -->
+<div class="modal modal-blur fade" id="modalTerminosLegales" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:20px;overflow:hidden;">
+      <div class="modal-header text-white py-3" style="background:linear-gradient(135deg,#12163a,#4f46e5)">
+        <h4 class="modal-title mb-0 fw-bold"><i class="ti ti-shield-lock me-1"></i> Acuerdo de Servicio y Condiciones Legales · Wesbyte</h4>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body p-4 small text-dark" style="line-height:1.65;">
+        <p><strong>1. Objeto y Licencia SaaS:</strong> Wesbyte otorga al Cliente una licencia de uso no exclusiva, intransferible y temporal sobre la plataforma tecnológica durante la vigencia del plan contratado.</p>
+        <p><strong>2. Exclusión de Promociones y Ventas por WhatsApp:</strong> <u>Ningún plan incluye envío de promociones o venta por WhatsApp; sin embargo, puedes cotizar dicho servicio por separado.</u> Los mensajes incluidos en los planes están limitados a notificaciones operativas, transaccionales o de cobranza/renovación autorizadas.</p>
+        <p><strong>3. Desarrollos Personalizados:</strong> Todo requerimiento de desarrollo a la medida, reportes especiales, migraciones complejas o integraciones no contempladas en el plan contratado tendrá un valor extra, sujeto a cotización y aprobación previa.</p>
+        <p><strong>4. Copia o Exportación de Base de Datos:</strong> La infraestructura de base de datos pertenece al entorno gestionado por Wesbyte. Si el Cliente desea obtener una copia o exportación de su base de datos al finalizar el contrato, dicho servicio tendrá un valor extra administrativo y técnico.</p>
+        <p><strong>5. Disponibilidad de APIs:</strong> El acceso a los servicios de API y consultas estatales estará habilitado única y exclusivamente para clientes con suscripción activa y pagos al día. La mora o cancelación suspende automáticamente el consumo de API.</p>
+        <p><strong>6. Retención y Eliminación Permanente de Datos (3 años):</strong> Finalizado o cancelado el contrato del plan, Wesbyte conservará la información en resguardo por un plazo máximo de <strong>tres (3) años</strong>. Cumplido dicho plazo de 3 años desde la finalización del contrato, sus datos serán eliminados de forma permanente e irreversible sin responsabilidad ulterior para Wesbyte.</p>
+        <p><strong>7. Confidencialidad y Responsabilidad del Cliente:</strong> Wesbyte mantiene la información en un dataset aislado bajo estricta confidencialidad. El Cliente es único responsable de la licitud de los datos cargados, del consentimiento de sus destinatarios (LOPDP y normativa vigente) y del resguardo de sus credenciales.</p>
+        <p class="mb-0"><strong>8. Disponibilidad y Terceros:</strong> Wesbyte no será responsable por interrupciones imputables a proveedores externos (Meta/WhatsApp, servicios de correo, APIs gubernamentales o pasarelas de pago), ni por daños indirectos o lucro cesante.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal" onclick="document.getElementById('chkAceptoTerminos').checked = true; actualizarEstadoCajitaPayphone();">Aceptar y Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
   const CLIENTE_ID = {{ reg.cliente_id }};
-  const BOX_ANUAL = {{ box_anual_json | safe }};
-  const BOX_MENSUAL = {{ box_mensual_json | safe }};
-  const PRECIO_ANUAL_BASE = {{ plan.precio_anual }};
-  const PRECIO_ANUAL_DESC = {{ plan.precio_anual_con_descuento }};
-  const AHORRO_ANUAL = {{ plan.ahorro_anual }};
-  const PRECIO_MENSUAL = {{ plan.precio_mensual }};
+  const BOXES_POR_PERIODO = {{ boxes_json | safe }};
+  const MONTOS_POR_PERIODO = {{ periodos_montos_json | safe }};
 
-  let modalidadSeleccionada = "{{ reg.modalidad_preferida or 'anual_unico' }}";
+  let periodoSeleccionado = "{{ periodo_inicial or '1_year' }}";
 
-  function seleccionarModalidadCheckout(modalidad) {
-    modalidadSeleccionada = modalidad;
-    const cardAnual = document.getElementById("optCardAnual");
-    const cardMensual = document.getElementById("optCardMensual");
-    const radAnual = document.getElementById("radAnual");
-    const radMensual = document.getElementById("radMensual");
+  function seleccionarPeriodoCheckout(periodo) {
+    periodoSeleccionado = ["1_year", "2_years", "3_years"].includes(periodo) ? periodo : "1_year";
+    for (const p of ["1_year", "2_years", "3_years"]) {
+      const card = document.getElementById("optCard_" + p);
+      const rad = document.getElementById("rad_" + p);
+      if (card) card.classList.toggle("active", p === periodoSeleccionado);
+      if (rad) rad.checked = (p === periodoSeleccionado);
+    }
 
+    const m = MONTOS_POR_PERIODO[periodoSeleccionado];
     const rowSubtotal = document.getElementById("rowSubtotal");
     const rowDescuento = document.getElementById("rowDescuento");
     const lblTotalValor = document.getElementById("lblTotalPagarValor");
     const subtituloMetodo = document.getElementById("subtituloMetodoPayphone");
 
-    if (modalidad === "anual_unico") {
-      cardAnual.classList.add("active");
-      cardMensual.classList.remove("active");
-      radAnual.checked = true;
-      radMensual.checked = false;
-
-      rowSubtotal.innerHTML = `<span class="text-muted">Valor Anual Base:</span><span>$${PRECIO_ANUAL_BASE.toFixed(2)} USD</span>`;
+    rowSubtotal.innerHTML = `<span class="text-muted">Valor Base (${m.label}):</span><span>$${m.subtotal.toFixed(2)} USD</span>`;
+    if (m.ahorro > 0) {
       rowDescuento.classList.remove("d-none");
-      lblTotalValor.textContent = `$${PRECIO_ANUAL_DESC.toFixed(2)} USD`;
-      subtituloMetodo.textContent = "Cobro único por 1 año con 10% de descuento incluido";
-      document.querySelectorAll(".lblMontoBoton").forEach(el => el.textContent = `$${PRECIO_ANUAL_DESC.toFixed(2)}`);
+      rowDescuento.innerHTML = `<span>Descuento (${m.descuento_pct.toFixed(0)}% OFF):</span><span>-$${m.ahorro.toFixed(2)} USD</span>`;
+      subtituloMetodo.textContent = `Pago único por ${m.label} con ${m.descuento_pct.toFixed(0)}% de descuento incluido`;
     } else {
-      cardMensual.classList.add("active");
-      cardAnual.classList.remove("active");
-      radMensual.checked = true;
-      radAnual.checked = false;
-
-      rowSubtotal.innerHTML = `<span class="text-muted">Cuota Mensual Recurrente:</span><span>$${PRECIO_MENSUAL.toFixed(2)} USD / mes</span>`;
       rowDescuento.classList.add("d-none");
-      lblTotalValor.textContent = `$${PRECIO_MENSUAL.toFixed(2)} USD / mes`;
-      subtituloMetodo.textContent = "Suscripción con cobro mensual recurrente automático vía PayPhone";
-      document.querySelectorAll(".lblMontoBoton").forEach(el => el.textContent = `$${PRECIO_MENSUAL.toFixed(2)}/mes`);
+      subtituloMetodo.textContent = `Pago único por ${m.label} · Tarjeta Visa / Mastercard o App PayPhone`;
     }
+    lblTotalValor.textContent = `$${m.total.toFixed(2)} USD`;
+    document.querySelectorAll(".lblMontoBoton").forEach(el => el.textContent = `$${m.total.toFixed(2)}`);
 
     renderizarCajitaOficialPayphone();
   }
 
+  function actualizarEstadoCajitaPayphone() {
+    const chk = document.getElementById("chkAceptoTerminos");
+    const ppBtn = document.getElementById("pp-button");
+    const overlay = document.getElementById("ppOverlayBloqueo");
+    const aceptado = Boolean(chk && chk.checked);
+    if (ppBtn) {
+      ppBtn.style.opacity = aceptado ? "1" : "0.45";
+      ppBtn.style.pointerEvents = aceptado ? "auto" : "none";
+    }
+    if (overlay) {
+      overlay.classList.toggle("d-none", aceptado);
+    }
+  }
+
+  let _ppRenderAttempts = 0;
   function renderizarCajitaOficialPayphone() {
-    const token = (document.getElementById("customPayphoneToken")?.value || BOX_ANUAL.token || "").trim();
-    const storeId = (document.getElementById("customPayphoneStoreId")?.value || BOX_ANUAL.storeId || "").trim();
+    const cfg = BOXES_POR_PERIODO[periodoSeleccionado] || BOXES_POR_PERIODO["1_year"];
+    const token = (document.getElementById("customPayphoneToken")?.value || cfg.token || "").trim();
+    const storeId = (document.getElementById("customPayphoneStoreId")?.value || cfg.storeId || "").trim();
     const container = document.getElementById("pp-button");
-    if (!token || !window.PPPaymentButtonBox) {
+    if (!token) {
       container.innerHTML = "";
       return;
     }
+    if (!window.PPPaymentButtonBox) {
+      if (_ppRenderAttempts < 20) {
+        _ppRenderAttempts += 1;
+        setTimeout(renderizarCajitaOficialPayphone, 200);
+      }
+      return;
+    }
 
-    const cfg = modalidadSeleccionada === "anual_unico" ? BOX_ANUAL : BOX_MENSUAL;
     container.innerHTML = "";
     try {
       const ppb = new PPPaymentButtonBox({
@@ -345,19 +405,25 @@
   }
 
   async function ejecutarPagoPayphone(metodo) {
-    const cfg = modalidadSeleccionada === "anual_unico" ? BOX_ANUAL : BOX_MENSUAL;
-    const montoMostrar = modalidadSeleccionada === "anual_unico"
-      ? `$${PRECIO_ANUAL_DESC.toFixed(2)} USD (Anual con 10% OFF)`
-      : `$${PRECIO_MENSUAL.toFixed(2)} USD / mes (Pago Recurrente)`;
+    const chkTerminos = document.getElementById("chkAceptoTerminos");
+    if (chkTerminos && !chkTerminos.checked) {
+      Swal.fire(
+        "Acuerdo requerido",
+        "Debes leer y aceptar los Términos y Condiciones Legales antes de realizar el pago.",
+        "warning"
+      );
+      return;
+    }
+    const cfg = BOXES_POR_PERIODO[periodoSeleccionado] || BOXES_POR_PERIODO["1_year"];
+    const m = MONTOS_POR_PERIODO[periodoSeleccionado];
+    const montoMostrar = `$${m.total.toFixed(2)} USD (Pago Único · ${m.label})`;
 
     Swal.fire({
-      title: "Verificando Pago con PayPhone y Creando Dataset...",
+      title: "Verificando Pago con PayPhone...",
       html: `
         <div class="text-start small mt-2">
-          <p class="mb-2"><i class="ti ti-check text-success me-1"></i> Confirmando cobro en PayPhone: <strong>${montoMostrar}</strong></p>
-          <p class="mb-2"><i class="ti ti-database text-primary me-1"></i> Creando dataset <code>{{ reg.dataset_id }}</code> en Google BigQuery...</p>
-          <p class="mb-2"><i class="ti ti-copy text-azure me-1"></i> Copiando tablas vacías...</p>
-          <p class="mb-0"><i class="ti ti-user-check text-warning me-1"></i> Creando usuario <code>admin</code> y <code>{{ reg.username }}</code> en <code>maestra_usuarios_app</code>...</p>
+          <p class="mb-2"><i class="ti ti-check text-success me-1"></i> Procesando cobro seguro con PayPhone: <strong>${montoMostrar}</strong></p>
+          <p class="mb-0 text-muted"><i class="ti ti-shield-check text-primary me-1"></i> Activando tu cuenta y preparando tu plataforma...</p>
         </div>
       `,
       allowOutsideClick: false,
@@ -372,7 +438,8 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           cliente_id: CLIENTE_ID,
-          modalidad_pago: modalidadSeleccionada,
+          periodo: periodoSeleccionado,
+          modalidad_pago: `pago_unico_${periodoSeleccionado}`,
           metodo_pago: metodo,
           client_transaction_id: cfg.clientTransactionId,
           payphone_phone: document.getElementById("ppPhoneInput")?.value || "",
@@ -391,7 +458,12 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    seleccionarModalidadCheckout(modalidadSeleccionada);
+    seleccionarPeriodoCheckout(periodoSeleccionado);
+    actualizarEstadoCajitaPayphone();
+  });
+  window.addEventListener("load", () => {
+    renderizarCajitaOficialPayphone();
+    actualizarEstadoCajitaPayphone();
   });
 </script>
 {% endblock %}

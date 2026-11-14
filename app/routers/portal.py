@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
 import secrets
-from fastapi import APIRouter, Request, HTTPException, Body, Query, Depends
+from fastapi import APIRouter, Request, HTTPException, Body, Query, Depends, UploadFile, File
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -18,18 +18,23 @@ from app.config import (
     WESBYTE_APP_URL,
     SOPORTE_EMAIL,
     PLANES_OFICIALES,
+    PERIODOS_COMPROMISO,
     TARIFAS_CALCULADORA,
     PAYPHONE_TOKEN,
     PAYPHONE_STORE_ID,
     PAYPHONE_SANDBOX_MODE,
     STAFF_USER,
     STAFF_PASSWORD,
+    calcular_montos_periodo,
     calcular_plan_personalizado,
+    normalizar_periodo,
 )
+from app.services.google_drive_service import GoogleDriveService, GoogleDriveServiceError
 from app.routers.cliente import get_sesion
 from app.database import (
     get_bq_client,
     get_query,
+    execute_query,
     normalize_dataset_name,
 )
 from app.services.onboarding_service import (
@@ -67,10 +72,10 @@ def require_staff(creds: HTTPBasicCredentials = Depends(_basic)):
 async def landing_portal(request: Request):
     """Página principal del Portal Comercial Wesbyte (Planes, Asesor, Calculadora, Registro y Pago)."""
     calc_inicial = calcular_plan_personalizado(
-        usuarios=3,
+        usuarios=1,
         whatsapp_mensual=150,
-        emails_mensual=120,
-        api_ecuador_mensual=250,
+        emails_mensual=250,
+        api_ecuador_mensual=100,
     )
     return templates.TemplateResponse(
         request=request,
@@ -95,9 +100,9 @@ async def api_calcular_plan(payload: Dict[str, Any] = Body(...)):
     try:
         resultado = calcular_plan_personalizado(
             usuarios=int(payload.get("usuarios", 1)),
-            whatsapp_mensual=int(payload.get("whatsapp_mensual", 50)),
-            emails_mensual=int(payload.get("emails_mensual", 50)),
-            api_ecuador_mensual=int(payload.get("api_ecuador_mensual", 50)),
+            whatsapp_mensual=int(payload.get("whatsapp_mensual", 150)),
+            emails_mensual=int(payload.get("emails_mensual", 250)),
+            api_ecuador_mensual=int(payload.get("api_ecuador_mensual", 100)),
         )
         return {"success": True, "data": resultado}
     except Exception as exc:
@@ -108,7 +113,7 @@ async def api_calcular_plan(payload: Dict[str, Any] = Body(...)):
 async def api_normalizar_dataset(nombre_empresa: str = Query("")):
     """Devuelve cómo quedará el nombre del dataset en BigQuery (minúscula, sin espacios ni tildes)."""
     dataset_id = normalize_dataset_name(nombre_empresa)
-    if dataset_id in ("wesbytes", "broker_pmp"):
+    if dataset_id in ("administracion", "wesbytes", "broker_pmp", "prototipo"):
         dataset_id = f"{dataset_id}_empresa"
     return {
         "nombre_original": nombre_empresa,
@@ -120,7 +125,7 @@ async def api_normalizar_dataset(nombre_empresa: str = Query("")):
 @router.post("/api/registro")
 async def api_registrar_cliente(payload: Dict[str, Any] = Body(...)):
     """
-    Paso 1 -> Paso 2: Registra los datos del usuario y su empresa en `broker-pmp.wesbytes`
+    Paso 1 -> Paso 2: Registra los datos del usuario y su empresa en `wesbyte.administracion`
     y prepara el checkout de PayPhone con las 2 opciones (Pago Único Anual -10% o Mensual Recurrente).
     """
     try:
@@ -129,32 +134,25 @@ async def api_registrar_cliente(payload: Dict[str, Any] = Body(...)):
         _active_checkouts[cliente_id] = reg_data
 
         plan = reg_data["plan"]
-        tx_anual = generate_client_tx_id(cliente_id, "anual_unico")
-        tx_mensual = generate_client_tx_id(cliente_id, "mensual_recurrente")
-
-        box_anual = build_payphone_box_config(
-            client_tx_id=tx_anual,
-            monto_usd=plan["precio_anual_con_descuento"],
-            descripcion=f"Wesbyte {plan['nombre']} - Anual (-10% Desc) - {reg_data['nombre_empresa']}",
-            email=reg_data["correo"],
-            celular=reg_data["celular"],
-            documento=reg_data["ruc_cedula"],
-            modalidad_pago="anual_unico",
-        )
-        box_mensual = build_payphone_box_config(
-            client_tx_id=tx_mensual,
-            monto_usd=plan["precio_mensual"],
-            descripcion=f"Wesbyte {plan['nombre']} - Suscripcion Mensual - {reg_data['nombre_empresa']}",
-            email=reg_data["correo"],
-            celular=reg_data["celular"],
-            documento=reg_data["ruc_cedula"],
-            modalidad_pago="mensual_recurrente",
-        )
+        periodo = reg_data.get("periodo", "1_year")
+        payphone_options = {}
+        for p_key in ("1_year", "2_years", "3_years"):
+            m = calcular_montos_periodo(float(plan["precio_anual"]), p_key)
+            tx_id = generate_client_tx_id(cliente_id, p_key)
+            payphone_options[p_key] = build_payphone_box_config(
+                client_tx_id=tx_id,
+                monto_usd=m["total"],
+                descripcion=f"Wesbyte {plan['nombre']} - {m['label']} - {reg_data['nombre_empresa']}",
+                email=reg_data["correo"],
+                celular=reg_data["celular"],
+                documento=reg_data["ruc_cedula"],
+                modalidad_pago=f"pago_unico_{p_key}",
+            )
 
         return {
             "success": True,
             "cliente_id": cliente_id,
-            "checkout_url": f"/checkout/{cliente_id}",
+            "checkout_url": f"/checkout/{cliente_id}?periodo={periodo}",
             "registration": {
                 "cliente_id": cliente_id,
                 "nombre_empresa": reg_data["nombre_empresa"],
@@ -164,18 +162,72 @@ async def api_registrar_cliente(payload: Dict[str, Any] = Body(...)):
                 "username": reg_data["username"],
                 "dataset_id": reg_data["dataset_id"],
                 "plan": plan,
+                "periodo": periodo,
                 "modalidad_preferida": reg_data["modalidad_preferida"],
             },
-            "payphone_options": {
-                "anual_unico": box_anual,
-                "mensual_recurrente": box_mensual,
-            },
+            "payphone_options": payphone_options,
         }
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as exc:
         logger.exception("Error registrando cliente en Wesbyte Portal")
         raise HTTPException(status_code=500, detail=f"Error al procesar el registro: {str(exc)}")
+
+
+@router.post("/api/registro/{cliente_id}/logo")
+async def api_registro_subir_logo(cliente_id: int, file: UploadFile = File(...)):
+    """Permite subir el logo de la empresa durante el registro inicial (estado pendiente_pago)."""
+    df_c = get_query(f"""
+        SELECT id, estado FROM `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.clientes`
+        WHERE id = {int(cliente_id)}
+        LIMIT 1
+    """)
+    if df_c.empty:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+    estado = str(df_c.iloc[0].get("estado") or "").strip().lower()
+    if estado != "pendiente_pago":
+        raise HTTPException(status_code=403, detail="Solo se puede cargar el logo desde aquí durante el registro inicial.")
+
+    orig_name = (file.filename or "logo.png").strip()
+    ext = orig_name.rsplit(".", 1)[-1].lower() if "." in orig_name else "png"
+    if ext not in ("png", "jpg", "jpeg", "webp", "svg"):
+        raise HTTPException(status_code=400, detail="Formato no permitido. Usa PNG, JPG, WEBP o SVG.")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="El archivo está vacío.")
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="El logo no debe superar los 5 MB.")
+
+    mime_map = {
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "webp": "image/webp",
+        "svg": "image/svg+xml",
+    }
+    mime_type = file.content_type or mime_map.get(ext, "image/png")
+    drive_filename = f"cliente_{int(cliente_id)}_{uuid.uuid4().hex[:8]}.{ext}"
+
+    try:
+        drive_res = GoogleDriveService().upload_logo(
+            file_bytes=content,
+            filename=drive_filename,
+            mime_type=mime_type,
+            folder_path="clientes/logos",
+        )
+    except GoogleDriveServiceError as exc:
+        logger.error(f"Error subiendo logo en registro a Google Drive: {exc}")
+        raise HTTPException(status_code=500, detail=f"Error subiendo logo a Google Drive: {str(exc)}")
+
+    logo_url = drive_res["url"]
+    clean_url = logo_url.replace("'", "''")
+    execute_query(f"""
+        UPDATE `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.clientes`
+        SET logo = '{clean_url}'
+        WHERE id = {int(cliente_id)}
+    """)
+    return {"success": True, "logo_url": logo_url}
 
 
 def _recover_checkout_from_bq(cliente_id: int) -> Optional[Dict[str, Any]]:
@@ -216,7 +268,8 @@ def _recover_checkout_from_bq(cliente_id: int) -> Optional[Dict[str, Any]]:
         "password_hash": str(u_row.get("password_hash") or ""),
         "dataset_id": str(c_row.get("dataset_id") or normalize_dataset_name(str(c_row.get("nombre") or ""))),
         "plan": plan,
-        "modalidad_preferida": "anual_unico",
+        "periodo": "1_year",
+        "modalidad_preferida": "pago_unico_1_year",
         "requiere_nda_personalizado": bool(c_row.get("requiere_nda_personalizado", False)),
     }
     _active_checkouts[cliente_id] = recovered
@@ -224,38 +277,39 @@ def _recover_checkout_from_bq(cliente_id: int) -> Optional[Dict[str, Any]]:
 
 
 @router.get("/checkout/{cliente_id}", response_class=HTMLResponse)
-async def checkout_page(request: Request, cliente_id: int):
+async def checkout_page(
+    request: Request,
+    cliente_id: int,
+    periodo: Optional[str] = Query(None),
+):
     """
-    Paso 2 -> Paso 3: Pantalla dedicada de Checkout con PayPhone donde el usuario elige entre:
-    1) Pago Único Anual con 10% de Descuento
-    2) Pago Mensual Recurrente
+    Paso 2 -> Paso 3: Pantalla dedicada de Checkout con PayPhone con pagos únicos:
+    1 Año (base), 2 Años (-10%) o 3 Años (-15%).
     """
     reg_data = _recover_checkout_from_bq(cliente_id)
     if not reg_data:
         return RedirectResponse(url="/", status_code=302)
 
     plan = reg_data["plan"]
-    tx_anual = generate_client_tx_id(cliente_id, "anual_unico")
-    tx_mensual = generate_client_tx_id(cliente_id, "mensual_recurrente")
+    periodo_inicial = normalizar_periodo(periodo or reg_data.get("periodo") or "1_year")
+    reg_data["periodo"] = periodo_inicial
+    reg_data["modalidad_preferida"] = f"pago_unico_{periodo_inicial}"
 
-    box_anual = build_payphone_box_config(
-        client_tx_id=tx_anual,
-        monto_usd=plan["precio_anual_con_descuento"],
-        descripcion=f"Wesbyte {plan['nombre']} - Anual (-10% Desc) - {reg_data['nombre_empresa']}",
-        email=reg_data["correo"],
-        celular=reg_data["celular"],
-        documento=reg_data["ruc_cedula"],
-        modalidad_pago="anual_unico",
-    )
-    box_mensual = build_payphone_box_config(
-        client_tx_id=tx_mensual,
-        monto_usd=plan["precio_mensual"],
-        descripcion=f"Wesbyte {plan['nombre']} - Suscripcion Mensual - {reg_data['nombre_empresa']}",
-        email=reg_data["correo"],
-        celular=reg_data["celular"],
-        documento=reg_data["ruc_cedula"],
-        modalidad_pago="mensual_recurrente",
-    )
+    periodos_montos: Dict[str, Dict[str, Any]] = {}
+    boxes: Dict[str, Dict[str, Any]] = {}
+    for p_key in ("1_year", "2_years", "3_years"):
+        m = calcular_montos_periodo(float(plan["precio_anual"]), p_key)
+        periodos_montos[p_key] = m
+        tx_id = generate_client_tx_id(cliente_id, p_key)
+        boxes[p_key] = build_payphone_box_config(
+            client_tx_id=tx_id,
+            monto_usd=m["total"],
+            descripcion=f"Wesbyte {plan['nombre']} - {m['label']} - {reg_data['nombre_empresa']}",
+            email=reg_data["correo"],
+            celular=reg_data["celular"],
+            documento=reg_data["ruc_cedula"],
+            modalidad_pago=f"pago_unico_{p_key}",
+        )
 
     return templates.TemplateResponse(
         request=request,
@@ -263,10 +317,11 @@ async def checkout_page(request: Request, cliente_id: int):
         context={
             "reg": reg_data,
             "plan": plan,
-            "box_anual": box_anual,
-            "box_mensual": box_mensual,
-            "box_anual_json": json.dumps(box_anual),
-            "box_mensual_json": json.dumps(box_mensual),
+            "periodo_inicial": periodo_inicial,
+            "periodos_montos": periodos_montos,
+            "periodos_montos_json": json.dumps(periodos_montos),
+            "boxes": boxes,
+            "boxes_json": json.dumps(boxes),
             "payphone_token": PAYPHONE_TOKEN,
             "payphone_store_id": PAYPHONE_STORE_ID,
             "payphone_sandbox": PAYPHONE_SANDBOX_MODE,
@@ -282,22 +337,29 @@ async def api_confirm_payment_and_provision(payload: Dict[str, Any] = Body(...))
     """
     Verifica el pago con PayPhone (ya sea pago único anual con 10% de descuento o pago mensual recurrente)
     y ejecuta inmediatamente el aprovisionamiento en BigQuery:
-    1) Crea el dataset `broker-pmp.<empresa_en_minuscula_sin_espacios_ni_tildes>`
+    1) Crea el dataset `wesbyte.<empresa_en_minuscula_sin_espacios_ni_tildes>`
     2) Copia todas las tablas de `broker_pmp` vacías y sus vistas
     3) Crea el usuario `admin` y el usuario registrado con la misma contraseña en `maestra_usuarios_app`
        y en `wesbytes.usuarios`
     4) Activa la suscripción en `wesbytes.suscripciones`
     """
     cliente_id = int(payload.get("cliente_id", 0))
-    modalidad_pago = str(payload.get("modalidad_pago", "anual_unico"))
+    periodo = normalizar_periodo(payload.get("periodo") or str(payload.get("modalidad_pago", "1_year")).replace("pago_unico_", ""))
+    modalidad_pago = f"pago_unico_{periodo}"
     metodo_pago = str(payload.get("metodo_pago", "PAYPHONE_CARD"))
     payphone_id = payload.get("payphone_id")
-    client_tx_id = str(payload.get("client_transaction_id") or generate_client_tx_id(cliente_id, modalidad_pago))
+    client_tx_id = str(payload.get("client_transaction_id") or generate_client_tx_id(cliente_id, periodo))
     custom_token = str(payload.get("custom_payphone_token") or "").strip()
 
     reg_data = _recover_checkout_from_bq(cliente_id)
     if not reg_data:
         raise HTTPException(status_code=404, detail="Registro de cliente no encontrado.")
+
+    if not PAYPHONE_SANDBOX_MODE and (payload.get("simulated", False) or not payphone_id):
+        raise HTTPException(
+            status_code=400,
+            detail="En modo producción el pago debe confirmarse directamente a través de PayPhone.",
+        )
 
     # Si viene un ID de transacción real de PayPhone y hay token disponible, confirmar contra la API de PayPhone
     if payphone_id and (custom_token or PAYPHONE_TOKEN) and not payload.get("simulated", False):
@@ -323,7 +385,7 @@ async def api_confirm_payment_and_provision(payload: Dict[str, Any] = Body(...))
         # Confirmación verificada (Pasarela PayPhone integrada / Sandbox o Token de Suscripción)
         pp_tx_id = str(payphone_id or f"PP-{uuid.uuid4().hex[:8].upper()}")
         auth_code = f"AUTH-{uuid.uuid4().hex[:6].upper()}"
-        sub_token = f"SUB-PP-{uuid.uuid4().hex[:10].upper()}" if modalidad_pago == "mensual_recurrente" else ""
+        sub_token = ""
         payment_info = {
             "payphone_transaction_id": pp_tx_id,
             "client_transaction_id": client_tx_id,
@@ -373,16 +435,22 @@ async def payphone_redirect_callback(
     if not id or not clientTransactionId:
         return RedirectResponse(url="/", status_code=302)
 
-    # Extraer cliente_id del clientTransactionId (formato WB<cliente_id>AN... o WB<cliente_id>MR...)
+    # Extraer cliente_id del clientTransactionId (formato WB<cliente_id>1Y..., 2Y..., 3Y...)
     cliente_id = None
-    modalidad = "anual_unico"
+    modalidad = "pago_unico_1_year"
     if clientTransactionId.startswith("WB"):
         rest = clientTransactionId[2:]
-        if "MR" in rest:
-            modalidad = "mensual_recurrente"
-            num_part = rest.split("MR")[0]
+        if "3Y" in rest:
+            modalidad = "pago_unico_3_years"
+            num_part = rest.split("3Y")[0]
+        elif "2Y" in rest:
+            modalidad = "pago_unico_2_years"
+            num_part = rest.split("2Y")[0]
+        elif "1Y" in rest:
+            modalidad = "pago_unico_1_year"
+            num_part = rest.split("1Y")[0]
         elif "AN" in rest:
-            modalidad = "anual_unico"
+            modalidad = "pago_unico_1_year"
             num_part = rest.split("AN")[0]
         else:
             num_part = ""
@@ -455,8 +523,8 @@ async def exito_page(request: Request, cliente_id: int):
             pass
         provision_result = {
             "cliente_id": cliente_id,
-            "modalidad_pago": reg_data.get("modalidad_preferida", "anual_unico"),
-            "monto_total_cobrado": reg_data["plan"]["precio_anual_con_descuento"],
+            "modalidad_pago": reg_data.get("modalidad_preferida", "pago_unico_1_year"),
+            "monto_total_cobrado": reg_data["plan"]["precio_anual"],
             "fecha_inicio": datetime.date.today().isoformat(),
             "fecha_fin": (datetime.date.today() + datetime.timedelta(days=365)).isoformat(),
             "provisioning": {
@@ -489,7 +557,7 @@ async def exito_page(request: Request, cliente_id: int):
 
 @router.get("/panel-clientes", response_class=HTMLResponse)
 async def panel_clientes_page(request: Request, _staff: str = Depends(require_staff)):
-    """Vista de administración para auditar los clientes, datasets, suscripciones y pagos en `broker-pmp.wesbytes`."""
+    """Vista de administración para auditar los clientes, datasets, suscripciones y pagos en `wesbyte.administracion`."""
     df_clientes = get_query(f"""
         SELECT
             c.id,
