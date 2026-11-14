@@ -4,7 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from zoneinfo import ZoneInfo
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
 from app.config import APP_VERSION
@@ -68,6 +68,13 @@ app = FastAPI(
     version=APP_VERSION,
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def add_referrer_policy_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("Referrer-Policy", "origin-when-cross-origin")
+    return response
 
 static_dir = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")

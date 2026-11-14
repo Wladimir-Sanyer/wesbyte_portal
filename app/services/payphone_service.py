@@ -105,7 +105,7 @@ async def confirm_payphone_transaction(
     if not token:
         raise ValueError("No se ha configurado PAYPHONE_TOKEN para confirmar en producción.")
 
-    url = f"{PAYPHONE_API_URL}/button/V2/Confirm"
+    url = "https://paymentbox.payphonetodoesposible.com/api/confirm"
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
@@ -117,6 +117,8 @@ async def confirm_payphone_transaction(
 
     async with httpx.AsyncClient(timeout=25.0) as client:
         response = await client.post(url, headers=headers, json=payload)
+        if response.status_code == 404:
+            response = await client.post(f"{PAYPHONE_API_URL}/button/V2/Confirm", headers=headers, json=payload)
         data = response.json() if response.content else {}
         if response.status_code != 200:
             logger.error(f"Error PayPhone Confirm ({response.status_code}): {data}")

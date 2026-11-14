@@ -3,9 +3,10 @@
 {% block title %}Checkout PayPhone · {{ reg.nombre_empresa }} · Wesbyte Portal{% endblock %}
 
 {% block extra_head %}
-<!-- PayPhone Cajita de Pagos Oficial CSS & JS -->
-<link rel="stylesheet" href="https://cdn.payphonetodoesposible.com/box/v1.1/payphone-payment-box.css"/>
-<script type="module" src="https://cdn.payphonetodoesposible.com/box/v1.1/payphone-payment-box.js"></script>
+<meta name="referrer" content="origin-when-cross-origin">
+<!-- PayPhone Cajita de Pagos Oficial v2.0 CSS & JS -->
+<link rel="stylesheet" href="https://cdn.payphonetodoesposible.com/box/v2.0/payphone-payment-box.css"/>
+<script type="module" src="https://cdn.payphonetodoesposible.com/box/v2.0/payphone-payment-box.js"></script>
 {% endblock %}
 
 {% block content %}
@@ -368,12 +369,12 @@
     const storeId = (document.getElementById("customPayphoneStoreId")?.value || cfg.storeId || "").trim();
     const container = document.getElementById("pp-button");
     if (!token) {
-      container.innerHTML = "";
+      container.innerHTML = `<div class="alert alert-warning small mb-0"><i class="ti ti-alert-triangle me-1"></i> PayPhone Token no configurado en el servidor.</div>`;
       return;
     }
     const PayphoneBoxClass = window.PPaymentButtonBox || window.PPPaymentButtonBox || (typeof PPaymentButtonBox !== "undefined" ? PPaymentButtonBox : null);
     if (!PayphoneBoxClass) {
-      if (_ppRenderAttempts < 20) {
+      if (_ppRenderAttempts < 25) {
         _ppRenderAttempts += 1;
         setTimeout(renderizarCajitaOficialPayphone, 200);
       } else {
@@ -384,7 +385,7 @@
 
     container.innerHTML = "";
     try {
-      const ppb = new PayphoneBoxClass({
+      new PayphoneBoxClass({
         token: token,
         storeId: storeId || undefined,
         clientTransactionId: cfg.clientTransactionId,
@@ -396,12 +397,14 @@
         tip: 0,
         currency: "USD",
         reference: cfg.reference,
+        lang: "es",
+        defaultMethod: "card",
+        timeZone: -5,
         email: cfg.email,
         phoneNumber: cfg.phoneNumber,
         documentId: cfg.documentId,
         identificationType: cfg.identificationType
-      });
-      ppb.render("pp-button");
+      }).render("pp-button");
     } catch (e) {
       console.warn("No se pudo inicializar PPaymentButtonBox:", e);
       container.innerHTML = `<div class="alert alert-danger small mb-0"><i class="ti ti-alert-triangle me-1"></i> Error al inicializar PayPhone: ${e.message || e}</div>`;
