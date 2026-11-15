@@ -432,7 +432,7 @@ def complete_payment_and_provision(
     metodo_pago = str(payment_info.get("metodo_pago", "PAYPHONE")).strip()
     raw_json = json.dumps(payment_info.get("raw", {}), ensure_ascii=False)
 
-    existing_pago = pd.DataFrame()
+    existing_pago = None
     if tx_id:
         clean_tx = tx_id.replace("'", "''")
         existing_pago = get_query(f"""
@@ -441,7 +441,7 @@ def complete_payment_and_provision(
             LIMIT 1
         """)
 
-    if not existing_pago.empty:
+    if existing_pago is not None and not existing_pago.empty:
         pago_id = int(existing_pago.iloc[0]["id"])
         clean_pp = pp_tx_id.replace("'", "''")
         clean_auth = auth_code.replace("'", "''")
