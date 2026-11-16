@@ -130,7 +130,7 @@ async def api_normalizar_dataset(nombre_empresa: str = Query("")):
 async def api_registrar_cliente(payload: Dict[str, Any] = Body(...)):
     """
     Paso 1 -> Paso 2: Registra los datos del usuario y su empresa en `wesbyte.administracion`
-    y prepara el checkout de PayPhone con las 2 opciones (Pago Único Anual -10% o Mensual Recurrente).
+    y prepara el checkout de PayPhone en modalidad de pago único (1, 2 o 3 años).
     """
     try:
         reg_data = register_tenant_and_user(payload)
@@ -381,7 +381,7 @@ async def api_create_checkout_intent(payload: Dict[str, Any] = Body(...)):
 @router.post("/api/checkout/confirm")
 async def api_confirm_payment_and_provision(payload: Dict[str, Any] = Body(...)):
     """
-    Verifica el pago con PayPhone (ya sea pago único anual con 10% de descuento o pago mensual recurrente)
+    Verifica el pago con PayPhone (pago único de 1, 2 o 3 años)
     y ejecuta inmediatamente el aprovisionamiento en BigQuery:
     1) Crea el dataset `wesbyte.<empresa_en_minuscula_sin_espacios_ni_tildes>`
     2) Copia todas las tablas de `broker_pmp` vacías y sus vistas

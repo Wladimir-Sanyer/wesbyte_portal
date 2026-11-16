@@ -59,28 +59,29 @@ NOTIFICACIONES_CATALOGO: List[Dict[str, Any]] = [
         "codigo": "regularizaciones",
         "orden": 2,
         "nombre": "Envío de Regularizaciones",
-        "modo": "Acuerdo y pasos de regularización",
-        "es_automatico": False,
+        "modo": "Todos los lunes automático",
+        "es_automatico": True,
         "editable": True,
         "icono": "ti-file-check",
         "color": "amber",
         "descripcion": (
-            "Envía el acuerdo de renovación y los pasos de regularización para "
-            "completar o normalizar la póliza del cliente."
+            "Se envía automáticamente cada lunes a clientes con requisitos pendientes según su seguro "
+            "(Médicos: firma y pago inicial; Vida e inversión: pago inicial; otros: los 3 requisitos)."
         ),
         "default_whatsapp": True,
         "default_email": True,
-        "default_asunto_email": "Acuerdo de renovación y pasos de regularización · {numero_contrato}",
+        "default_asunto_email": "Recordatorio de regularización · Contrato {numero_contrato}",
         "default_mensaje_email": (
-            "Estimado/a cliente (CI: {cedula}),\n\n"
-            "Compartimos el acuerdo de renovación y los pasos de regularización para su contrato "
-            "{numero_contrato} ({ramos} - {aseguradora}, vigencia {fecha_vigencia}).\n\n"
+            "Estimado/a {nombres_completos_razon_social} (CI: {cedula}),\n\n"
+            "Le recordamos que su póliza {numero_contrato} ({ramos} - {aseguradora}) "
+            "aún tiene pendiente completar:\n{regularizaciones_faltantes}\n\n"
             "Para cualquier consulta, comuníquese con su agente {nombre_agente} ({broker})."
         ),
         "default_mensaje_whatsapp": (
-            "Hola, te compartimos de *{broker}* el acuerdo de renovación y los pasos de regularización "
-            "para tu contrato *{numero_contrato}* ({aseguradora} - {ramos}). "
-            "Vigencia: *{fecha_vigencia}*. Agente: *{nombre_agente}*."
+            "Hola *{nombres_completos_razon_social}*, te saludamos de *{broker}*.\n\n"
+            "Te recordamos que para tu póliza *{numero_contrato}* ({aseguradora} - {ramos}) "
+            "aún falta completar:\n{regularizaciones_faltantes}\n\n"
+            "Quedamos atentos para finalizar tu regularización. Agente: *{nombre_agente}*."
         ),
     },
     {
@@ -106,9 +107,10 @@ NOTIFICACIONES_CATALOGO: List[Dict[str, Any]] = [
             "Atentamente,\n{nombre_agente} · {broker}"
         ),
         "default_mensaje_whatsapp": (
-            "Hola, *{broker}* te hace entrega de tu póliza *{numero_contrato}* "
-            "({aseguradora} - {ramos}, Plan {plan}) con vigencia *{fecha_vigencia}*. "
-            "Atentamente, *{nombre_agente}*."
+            "Hola {nombres_completos_razon_social},\n\n"
+            "*{broker}* te hace entrega de tu póliza *{numero_contrato}* "
+            "({aseguradora} - {ramos}, Plan {plan}) con vigencia *{fecha_vigencia}*.\n\n"
+            "Atentamente,\n*{nombre_agente}*."
         ),
     },
     {
@@ -246,22 +248,36 @@ def get_cliente_notificaciones_y_plantillas(
         logger.debug(f"No se pudo leer notificaciones_habilitadas para cliente {client_id}: {exc}")
 
     plantillas_map: Dict[str, Dict[str, Dict[str, str]]] = {}
+    ultima_plantilla: Optional[Dict[str, str]] = None
     try:
         rows_tpl = _bq_rows(
             f"""
-            SELECT notificacion_codigo, canal, asunto, mensaje
+            SELECT notificacion_codigo, canal, asunto, mensaje, IFNULL(es_html, FALSE) AS es_html, fecha_actualizacion, fecha_creacion
             FROM `{P}.{W}.plantillas_notificaciones`
             WHERE client_id = @cid
+            ORDER BY COALESCE(fecha_actualizacion, fecha_creacion) DESC
             """,
             cp,
         )
         for r in rows_tpl:
             cod = str(r["notificacion_codigo"])
             canal = str(r["canal"]).lower()
+            asunto_val = str(r.get("asunto") or "")
+            mensaje_val = str(r.get("mensaje") or "")
+            es_html_val = bool(r.get("es_html", False))
             plantillas_map.setdefault(cod, {})[canal] = {
-                "asunto": str(r.get("asunto") or ""),
-                "mensaje": str(r.get("mensaje") or ""),
+                "asunto": asunto_val,
+                "mensaje": mensaje_val,
+                "es_html": es_html_val,
             }
+            if ultima_plantilla is None and mensaje_val:
+                ultima_plantilla = {
+                    "notificacion_codigo": cod,
+                    "canal": canal,
+                    "asunto": asunto_val,
+                    "mensaje": mensaje_val,
+                    "es_html": es_html_val,
+                }
     except Exception as exc:
         logger.debug(f"No se pudo leer plantillas_notificaciones para cliente {client_id}: {exc}")
 
@@ -305,6 +321,7 @@ def get_cliente_notificaciones_y_plantillas(
             "email_mensaje": (
                 tpl_em.get("mensaje") if base["editable"] and tpl_em.get("mensaje") else base["default_mensaje_email"]
             ),
+            "email_es_html": bool(tpl_em.get("es_html", False)),
             "whatsapp_personalizado": bool(base["editable"] and tpl_wa.get("mensaje")),
             "email_personalizado": bool(base["editable"] and (tpl_em.get("mensaje") or tpl_em.get("asunto"))),
         })
@@ -312,6 +329,7 @@ def get_cliente_notificaciones_y_plantillas(
     return {
         "notificaciones": items,
         "variables": PLANTILLA_VARIABLES,
+        "ultima_plantilla": ultima_plantilla,
     }
 
 
@@ -414,6 +432,7 @@ def save_cliente_plantilla(
     canal: str,
     asunto: Optional[str],
     mensaje: str,
+    es_html: bool = False,
 ) -> None:
     """Guarda o actualiza la plantilla personalizada de un cliente en plantillas_notificaciones."""
     meta = CATALOGO_POR_CODIGO.get(notificacion_codigo)
@@ -434,8 +453,14 @@ def save_cliente_plantilla(
     if canal_norm == "email" and not asunto_clean:
         asunto_clean = meta["default_asunto_email"]
 
+    if notificacion_codigo != "regularizaciones" and (
+        "{regularizaciones_faltantes}" in msg_clean or "{regularizaciones_faltantes}" in asunto_clean
+    ):
+        raise ValueError("La variable {regularizaciones_faltantes} solo puede usarse en 'Envío de Regularizaciones'.")
+
     P = BIGQUERY_PROJECT_ID
     W = WESBYTES_DATASET_ID
+    es_html_val = bool(es_html) if canal_norm == "email" else False
 
     _bq_exec(
         f"""
@@ -450,14 +475,15 @@ def save_cliente_plantilla(
             UPDATE SET
                 asunto = @asunto,
                 mensaje = @mensaje,
+                es_html = @es_html,
                 fecha_actualizacion = CURRENT_TIMESTAMP()
         WHEN NOT MATCHED THEN
             INSERT (
-                client_id, notificacion_codigo, canal, asunto, mensaje,
+                client_id, notificacion_codigo, canal, asunto, mensaje, es_html,
                 fecha_creacion, fecha_actualizacion
             )
             VALUES (
-                @cid, @cod, @canal, @asunto, @mensaje,
+                @cid, @cod, @canal, @asunto, @mensaje, @es_html,
                 CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()
             )
         """,
@@ -467,5 +493,6 @@ def save_cliente_plantilla(
             bigquery.ScalarQueryParameter("canal", "STRING", canal_norm),
             bigquery.ScalarQueryParameter("asunto", "STRING", asunto_clean),
             bigquery.ScalarQueryParameter("mensaje", "STRING", msg_clean),
+            bigquery.ScalarQueryParameter("es_html", "BOOL", es_html_val),
         ],
     )

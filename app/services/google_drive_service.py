@@ -157,10 +157,23 @@ class GoogleDriveService:
         if perm_resp.status_code >= 400:
             logger.warning(f"No se pudo asignar permiso público al archivo {file_id}: {perm_resp.text}")
 
-        public_url = f"https://drive.google.com/uc?export=view&id={file_id}"
+        public_url = f"https://lh3.googleusercontent.com/d/{file_id}"
         return {
             "file_id": file_id,
             "filename": data.get("name", filename),
             "url": public_url,
             "web_view_link": data.get("webViewLink", ""),
         }
+
+
+def normalize_drive_logo_url(url: Optional[str]) -> str:
+    """Convierte URLs antiguas de Drive uc?export=view&id=... a lh3.googleusercontent.com/d/... para renderizar sin bloqueo CORS."""
+    raw = str(url or "").strip()
+    if not raw:
+        return ""
+    if "drive.google.com" in raw:
+        import re
+        m = re.search(r"[?&]id=([A-Za-z0-9_-]+)", raw) or re.search(r"/file/d/([A-Za-z0-9_-]+)", raw)
+        if m:
+            return f"https://lh3.googleusercontent.com/d/{m.group(1)}"
+    return raw

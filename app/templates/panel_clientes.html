@@ -54,7 +54,7 @@
                 {% if c.monto_total_cobrado %}
                   <div class="fw-bold text-success">${{ "%.2f"|format(c.monto_total_cobrado) }} USD</div>
                   <div class="small text-muted">
-                    {{ 'Anual (-10%)' if c.modalidad_pago == 'anual_unico' else 'Mensual Recurrente' }}
+                    {% if c.modalidad_pago == 'pago_unico_3_years' %}Pago Único · 3 Años (-15%){% elif c.modalidad_pago == 'pago_unico_2_years' %}Pago Único · 2 Años (-10%){% elif c.modalidad_pago == 'upgrade_plan' %}Mejora de Plan{% elif c.modalidad_pago == 'mejora_usuarios' %}Usuarios Adicionales{% else %}Pago Único Anual{% endif %}
                     {% if c.payphone_transaction_id %}· <code>{{ c.payphone_transaction_id }}</code>{% endif %}
                   </div>
                 {% else %}

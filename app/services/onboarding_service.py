@@ -562,6 +562,7 @@ def complete_payment_and_provision(
                 "dataset_id": dataset_id,
                 "activo": True,
                 "permisos_seguros": permisos_all,
+                "permisos_paneles": "cargos,reportes,renovaciones,nuevos_negocios,estadisticas,administracion",
                 "ultimo_login": None,
                 "login_count": 0,
                 "created_at": now_ts,

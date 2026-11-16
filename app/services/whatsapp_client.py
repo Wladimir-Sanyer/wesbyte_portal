@@ -32,6 +32,13 @@ class WhatsAppClientError(Exception):
 class WhatsAppClient:
     """Cliente síncrono/asíncrono para consumir wesbyte_api."""
 
+    FALLBACK_URLS = (
+        "http://172.17.0.1:8000",
+        "http://whatsapp_api:8000",
+        "http://whatsapp.local:8000",
+        "https://apiwhatsapp.wesbyte.com",
+    )
+
     def __init__(
         self,
         base_url: str = WHATSAPP_API_URL,
@@ -41,6 +48,31 @@ class WhatsAppClient:
         self.base_url = base_url.rstrip("/")
         self.headers = {"X-API-Key": api_key, "Content-Type": "application/json"}
         self.timeout = timeout
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        timeout: Optional[float] = None,
+        json: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        urls = [self.base_url] + [u for u in self.FALLBACK_URLS if u != self.base_url]
+        last_exc: Optional[Exception] = None
+        async with httpx.AsyncClient(timeout=timeout or self.timeout) as client:
+            for base in urls:
+                try:
+                    resp = await client.request(
+                        method,
+                        f"{base}{path}",
+                        headers=self.headers,
+                        json=json,
+                    )
+                    return self._handle_response(resp)
+                except httpx.ConnectError as exc:
+                    last_exc = exc
+                    logger.warning(f"No se pudo conectar a {base}{path}: {exc}. Probando siguiente ruta...")
+                    continue
+        raise last_exc or httpx.ConnectError("No se pudo conectar con wesbyte_api")
 
     def _handle_response(self, resp: httpx.Response) -> Dict[str, Any]:
         if resp.status_code >= 400:
@@ -77,29 +109,13 @@ class WhatsAppClient:
         if notify_pending_fees is not None:
             payload["notify_pending_fees"] = bool(notify_pending_fees)
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.post(
-                f"{self.base_url}/api/v1/whatsapp/{client_id}/provision",
-                headers=self.headers,
-                json=payload,
-            )
-            return self._handle_response(resp)
+        return await self._request("POST", f"/api/v1/whatsapp/{client_id}/provision", json=payload)
 
     async def get_status(self, client_id: int) -> Dict[str, Any]:
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.get(
-                f"{self.base_url}/api/v1/whatsapp/{client_id}/status",
-                headers=self.headers,
-            )
-            return self._handle_response(resp)
+        return await self._request("GET", f"/api/v1/whatsapp/{client_id}/status")
 
     async def connect_qr(self, client_id: int) -> Dict[str, Any]:
-        async with httpx.AsyncClient(timeout=35.0) as client:
-            resp = await client.post(
-                f"{self.base_url}/api/v1/whatsapp/{client_id}/connect",
-                headers=self.headers,
-            )
-            return self._handle_response(resp)
+        return await self._request("POST", f"/api/v1/whatsapp/{client_id}/connect", timeout=35.0)
 
     async def update_preferences(
         self,
@@ -121,13 +137,7 @@ class WhatsAppClient:
         if not payload:
             return {}
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.patch(
-                f"{self.base_url}/api/v1/whatsapp/{client_id}/preferences",
-                headers=self.headers,
-                json=payload,
-            )
-            return self._handle_response(resp)
+        return await self._request("PATCH", f"/api/v1/whatsapp/{client_id}/preferences", json=payload)
 
     async def send_message(
         self,
@@ -148,13 +158,7 @@ class WhatsAppClient:
             payload["pdf_base64"] = pdf_base64
             payload["pdf_filename"] = pdf_filename or "documento.pdf"
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.post(
-                f"{self.base_url}/api/v1/whatsapp/send",
-                headers=self.headers,
-                json=payload,
-            )
-            return self._handle_response(resp)
+        return await self._request("POST", "/api/v1/whatsapp/send", json=payload)
 
 
 def map_notificaciones_to_wa_toggles(notificaciones: list[Dict[str, Any]]) -> Dict[str, bool]:

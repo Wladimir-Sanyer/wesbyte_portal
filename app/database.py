@@ -309,6 +309,7 @@ def init_wesbytes_schema_and_seeds() -> None:
         dataset_id STRING NOT NULL,
         activo BOOL NOT NULL,
         permisos_seguros STRING NOT NULL,
+        permisos_paneles STRING,
         ultimo_login TIMESTAMP,
         login_count INT64 NOT NULL,
         created_at TIMESTAMP,
@@ -324,6 +325,7 @@ def init_wesbytes_schema_and_seeds() -> None:
             "dataset_id": "STRING",
             "activo": "BOOL",
             "permisos_seguros": "STRING",
+            "permisos_paneles": "STRING",
             "ultimo_login": "TIMESTAMP",
             "login_count": "INT64",
             "email": "STRING",
@@ -343,6 +345,7 @@ def init_wesbytes_schema_and_seeds() -> None:
             existentes_cids = set(df_existentes["cliente_id"].tolist()) if not df_existentes.empty else set()
             now_ts = datetime.datetime.now(datetime.timezone.utc)
             permisos_all = "registros_medicos,registros_vehiculares,registros_vida_e_inversion,registros_ramos_generales"
+            paneles_all = "cargos,reportes,renovaciones,nuevos_negocios,estadisticas,administracion"
             nuevos_admins = []
             for _, r in df_clientes_activos.iterrows():
                 cid = int(r["id"])
@@ -365,6 +368,7 @@ def init_wesbytes_schema_and_seeds() -> None:
                         "dataset_id": str(r["dataset_id"]),
                         "activo": True,
                         "permisos_seguros": permisos_all,
+                        "permisos_paneles": paneles_all,
                         "ultimo_login": u_login,
                         "login_count": l_count,
                         "created_at": now_ts,
@@ -438,12 +442,18 @@ def init_wesbytes_schema_and_seeds() -> None:
         canal STRING NOT NULL,
         asunto STRING,
         mensaje STRING NOT NULL,
+        es_html BOOL,
         fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP() NOT NULL,
         fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP() NOT NULL
     )
     """)
 
+    ensure_columns_exist(WESBYTES_DATASET_ID, "plantillas_notificaciones", {"es_html": "BOOL"})
     ensure_columns_exist(WESBYTES_DATASET_ID, "clientes", {"logo": "STRING"})
+    try:
+        execute_query(f"ALTER TABLE `{dataset_ref}.clientes` DROP COLUMN IF EXISTS nombre_broker")
+    except Exception:
+        pass
     ensure_columns_exist(WESBYTES_DATASET_ID, "configuracion_planes_notificaciones", {"client_id": "INT64"})
     ensure_columns_exist(WESBYTES_DATASET_ID, "usuarios", {"debe_cambiar_password": "BOOL"})
     ensure_columns_exist(WESBYTES_DATASET_ID, "usuarios_app", {"debe_cambiar_password": "BOOL"})
@@ -545,7 +555,7 @@ def clone_broker_pmp_dataset_empty(
 
     # Paso 1: Clonar todas las tablas físicas vacías (CREATE TABLE IF NOT EXISTS ... LIKE ...)
     # y copiar los datos iniciales de las tablas maestras de catálogo (aseguradoras y planes)
-    seed_tables = {"maestra_aseguradora", "maestra_aseguradoras", "maestra_planes"}
+    seed_tables = {"maestra_aseguradora", "maestra_aseguradoras", "maestra_planes", "maestra_modalidad_pago"}
     for item in source_items:
         full_source_table = f"{source_ds_ref}.{item.table_id}"
         tbl_meta = client.get_table(full_source_table)

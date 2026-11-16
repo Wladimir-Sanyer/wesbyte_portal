@@ -10,6 +10,7 @@ from app.config import (
 )
 from app.database import get_bq_client, get_next_id, append_rows
 from app.services.email_service import EmailService, EmailServiceError
+from app.services.google_drive_service import normalize_drive_logo_url
 
 logger = logging.getLogger("wesbyte_portal.services.birthday")
 
@@ -38,7 +39,7 @@ class BirthdayNotificationService:
             c.id AS id_cliente,
             ANY_VALUE(c.nombre) AS nombre_broker,
             ANY_VALUE(c.email) AS email_broker,
-            ANY_VALUE(c.logo_url) AS logo_url,
+            ANY_VALUE(c.logo) AS logo_url,
             ANY_VALUE(c.plan_id) AS id_plan,
             ANY_VALUE(c.dataset_id) AS dataset_id,
             ANY_VALUE(p.codigo) AS codigo_plan,
@@ -71,8 +72,19 @@ class BirthdayNotificationService:
             results = list(query_job.result())
             tenants = []
             for r in results:
-                em_flag = r["nh_email_cumple"] if r["nh_email_cumple"] is not None else bool(r["cpn_correo_cumple"])
-                wa_flag = r["nh_wa_cumple"] if r["nh_wa_cumple"] is not None else bool(r["cpn_wa_cumple"])
+                if r["nh_email_cumple"] is not None:
+                    em_flag = bool(r["nh_email_cumple"])
+                elif r["cpn_correo_cumple"] is not None:
+                    em_flag = bool(r["cpn_correo_cumple"])
+                else:
+                    em_flag = True
+
+                if r["nh_wa_cumple"] is not None:
+                    wa_flag = bool(r["nh_wa_cumple"])
+                elif r["cpn_wa_cumple"] is not None:
+                    wa_flag = bool(r["cpn_wa_cumple"])
+                else:
+                    wa_flag = False
                 lim_em = int(r["limite_mensual_emails"] or 0)
                 lim_wa = int(r["limite_mensual_whatsapp"] or 0)
                 email_ok = bool(em_flag) and not bool(r["bloqueado_mensual_email"]) and (lim_em == 0 or int(r["total_emails"] or 0) < lim_em)
@@ -83,7 +95,7 @@ class BirthdayNotificationService:
                     "id_cliente": int(r["id_cliente"]),
                     "nombre_broker": str(r["nombre_broker"] or "Wesbyte Broker"),
                     "email_broker": str(r["email_broker"] or "").strip(),
-                    "logo_url": str(r["logo_url"] or "").strip(),
+                    "logo_url": normalize_drive_logo_url(r.get("logo_url")),
                     "id_plan": r["id_plan"],
                     "codigo_plan": str(r["codigo_plan"] or ""),
                     "nombre_plan": str(r["nombre_plan"] or ""),

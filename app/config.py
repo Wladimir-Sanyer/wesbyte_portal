@@ -112,7 +112,7 @@ PLANES_OFICIALES: List[Dict[str, Any]] = [
         "subtitulo": "Ideal para independientes y empresas en crecimiento que inician su automatización.",
         "max_usuarios": 1,
         "limite_mensual_whatsapp": 150,
-        "whatsapp_detalle": "enviadas desde cuenta oficial Wesbyte",
+        "whatsapp_detalle": "desde tu propio WhatsApp corporativo",
         "limite_mensual_emails": 250,
         "limite_mensual_api_ecuador": 100,
         "pdf_detalle": None,
@@ -150,7 +150,7 @@ PLANES_OFICIALES: List[Dict[str, Any]] = [
         "whatsapp_detalle": "desde tu propio WhatsApp corporativo",
         "limite_mensual_emails": 1000,
         "limite_mensual_api_ecuador": 400,
-        "pdf_detalle": "Cargue de PDF (condiciones de pago)",
+        "pdf_detalle": "Cargos de PDF (Renovaciones)",
         "precio_mensual": 30.00,
         "precio_anual": 359.99,
         "descuento_anual_pct": 0.00,
@@ -185,7 +185,7 @@ PLANES_OFICIALES: List[Dict[str, Any]] = [
         "whatsapp_detalle": "desde tu propio WhatsApp corporativo",
         "limite_mensual_emails": 3000,
         "limite_mensual_api_ecuador": 1000,
-        "pdf_detalle": "Cargue de PDF (condiciones de pago)",
+        "pdf_detalle": "Cargos de PDF (Renovaciones)",
         "precio_mensual": 41.67,
         "precio_anual": 499.99,
         "descuento_anual_pct": 0.00,
@@ -273,17 +273,16 @@ def calcular_plan_personalizado(
         and api_ecuador_mensual <= 400
     )
 
-    # Si supera los límites de Gold, calculamos tomando la tarifa bonificada de Gold + solo los excedentes
+    # Si supera los límites de Gold, siempre parte de la base Gold + excedentes corporativos coherentes
+    # (nunca puede costar menos que Super Gold si excede cualquiera de sus límites)
     if plan_equivalente:
         precio_mensual_final = plan_equivalente["precio_mensual"]
     elif not cabe_en_gold:
-        # Parte de la base Gold + adicionales con descuento corporativo
-        extra_usr = max(0, usuarios - 5) * (t["costo_usuario_extra_mensual"] * 0.8)
-        extra_wa = max(0, whatsapp_mensual - 1500) * (t["costo_whatsapp_unitario"] * 0.75)
-        extra_em = max(0, emails_mensual - 3000) * (t["costo_email_unitario"] * 0.75)
-        extra_api = max(0, api_ecuador_mensual - 1000) * (t["costo_api_ecuador_unitario"] * 0.75)
-        precio_gold_mas_excedentes = round(41.67 + extra_usr + extra_wa + extra_em + extra_api, 2)
-        precio_mensual_final = min(precio_mensual_suelto, precio_gold_mas_excedentes)
+        extra_usr = max(0, usuarios - 5) * 4.00
+        extra_wa = max(0, whatsapp_mensual - 1500) * 0.010
+        extra_em = max(0, emails_mensual - 3000) * 0.003
+        extra_api = max(0, api_ecuador_mensual - 1000) * 0.012
+        precio_mensual_final = round(41.67 + extra_usr + extra_wa + extra_em + extra_api, 2)
     else:
         precio_mensual_final = precio_mensual_suelto
 
@@ -295,6 +294,9 @@ def calcular_plan_personalizado(
         precio_anual = round(precio_mensual_final * 12, 2)
         descuento_anual = round(precio_anual * (t["descuento_anual_pct"] / 100.0), 2)
         precio_anual_con_descuento = round(precio_anual - descuento_anual, 2)
+        if not cabe_en_gold and precio_anual_con_descuento < 519.99:
+            precio_anual_con_descuento = 519.99
+            descuento_anual = round(max(0.0, precio_anual - precio_anual_con_descuento), 2)
 
     recomendacion_gold = False
     mensaje_recomendacion = ""

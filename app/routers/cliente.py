@@ -28,7 +28,7 @@ from app.config import (
 )
 from app.database import append_rows, execute_query, get_bq_client, get_next_id, hash_password, verify_password
 from app.services.email_service import EmailService, EmailServiceError
-from app.services.google_drive_service import GoogleDriveService, GoogleDriveServiceError
+from app.services.google_drive_service import GoogleDriveService, GoogleDriveServiceError, normalize_drive_logo_url
 from app.services.onboarding_service import registrar_intento_pago_payphone
 from app.services.payphone_service import build_payphone_box_config, generate_client_tx_id
 from app.services.notificaciones_config_service import (
@@ -113,6 +113,9 @@ def _enviar_correo_credenciales(
         <div style="margin-top: 22px; text-align: center;">
           <a href="{boton_url}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 24px;border-radius:10px;">Actualizar contraseña</a>
         </div>
+        <div style="margin-top:24px;padding-top:12px;border-top:1px solid #e2e8f0;text-align:center;font-size:10px;color:#94a3b8;letter-spacing:0.03em;">
+          Enviado por <a href="https://wesbyte.app" style="color:#64748b;text-decoration:none;font-weight:600;">wesbyte.app</a>
+        </div>
       </div>
     </div>
     """
@@ -140,6 +143,48 @@ def _enviar_correo_credenciales(
 def _rows(sql: str, params: Optional[List[bigquery.ScalarQueryParameter]] = None) -> List[Dict[str, Any]]:
     cfg = bigquery.QueryJobConfig(query_parameters=params or [])
     return [dict(r) for r in get_bq_client().query(sql, job_config=cfg).result()]
+
+
+RAMOS_VALIDOS = (
+    "registros_medicos",
+    "registros_vehiculares",
+    "registros_vida_e_inversion",
+    "registros_ramos_generales",
+)
+PANELES_VALIDOS = (
+    "cargos",
+    "reportes",
+    "renovaciones",
+    "nuevos_negocios",
+    "estadisticas",
+    "administracion",
+)
+ALL_PANELES_STR = ",".join(PANELES_VALIDOS)
+
+
+def _parse_csv_or_list(raw: Any, valid_values: tuple[str, ...]) -> List[str]:
+    if isinstance(raw, list):
+        return [str(v).strip() for v in raw if str(v).strip() in valid_values]
+    if isinstance(raw, str):
+        return [v.strip() for v in raw.split(",") if v.strip() in valid_values]
+    return []
+
+
+def _derive_legacy_permiso(selected_paneles: List[str]) -> str:
+    if "administracion" in selected_paneles:
+        return "supervisor"
+    if "cargos" in selected_paneles:
+        return "actualizador"
+    return "visualizador"
+
+
+def _legacy_paneles_for_permiso(permiso: str) -> str:
+    p = (permiso or "").strip().lower()
+    if p in ("administrador", "admin", "superadmin", "supervisor"):
+        return ALL_PANELES_STR
+    if p == "actualizador":
+        return "cargos,reportes,renovaciones,nuevos_negocios"
+    return "reportes,renovaciones,nuevos_negocios,estadisticas"
 
 
 @router.get("/ingresar", response_class=HTMLResponse)
@@ -225,7 +270,13 @@ async def api_ingresar(payload: Dict[str, Any] = Body(...)):
             status_code=403,
             detail="Tu cuenta ha sido cancelada (por solicitud o por superar 2 meses sin pago). Contacta a soporte para reactivar tu plan.",
         )
-    if u.get("estado") != "activo":
+    if u.get("estado") == "pendiente_pago":
+        if rol_usuario not in ("admin", "administrador", "superadmin"):
+            raise HTTPException(
+                status_code=403,
+                detail="Tu cuenta aún tiene pendiente el pago del plan. Solicita al administrador de tu empresa completar el pago.",
+            )
+    elif u.get("estado") != "activo":
         raise HTTPException(
             status_code=403,
             detail="Tu cuenta aún no tiene un pago confirmado. Completa el pago para activar tu portal.",
@@ -525,7 +576,7 @@ def _superadmin_dashboard() -> Dict[str, Any]:
     try:
         usuarios_raw = _rows(f"""
             SELECT u.id, u.cliente_id, u.username, u.nombre_completo AS nombre, u.email, u.permiso AS rol,
-                   u.permisos_seguros, u.activo, u.ultimo_login,
+                   u.permisos_seguros, IFNULL(u.permisos_paneles, '') AS permisos_paneles, u.activo, u.ultimo_login,
                    IFNULL(u.login_count, 0) AS login_count,
                    IFNULL(c.nombre, 'Wesbyte Global') AS empresa
             FROM `{P}.{W}.usuarios_app` u
@@ -657,7 +708,8 @@ def _dashboard(cid: int) -> Optional[Dict[str, Any]]:
     try:
         usuarios_app_raw = _rows(f"""
             SELECT id, cliente_id, username, nombre_completo, email, celular, permiso, dataset_id, activo,
-                   permisos_seguros, ultimo_login, IFNULL(login_count, 0) AS login_count, created_at
+                   permisos_seguros, IFNULL(permisos_paneles, '') AS permisos_paneles,
+                   ultimo_login, IFNULL(login_count, 0) AS login_count, created_at
             FROM `{P}.{W}.usuarios_app`
             WHERE cliente_id=@cid
             ORDER BY id ASC
@@ -670,6 +722,8 @@ def _dashboard(cid: int) -> Optional[Dict[str, Any]]:
                 continue
             if key:
                 seen_users.add(key)
+            if not str(u_row.get("permisos_paneles") or "").strip():
+                u_row["permisos_paneles"] = _legacy_paneles_for_permiso(str(u_row.get("permiso") or ""))
             usuarios_app.append(u_row)
     except Exception:
         usuarios_app = []
@@ -687,6 +741,7 @@ def _dashboard(cid: int) -> Optional[Dict[str, Any]]:
                 "dataset_id": cliente.get("dataset_id"),
                 "activo": bool(u.get("activo", True)),
                 "permisos_seguros": "registros_medicos,registros_vehiculares,registros_vida_e_inversion,registros_ramos_generales",
+                "permisos_paneles": ALL_PANELES_STR,
                 "ultimo_login": u.get("ultimo_login"),
                 "login_count": int(u.get("login_count", 0)),
                 "created_at": None,
@@ -789,6 +844,8 @@ def _dashboard(cid: int) -> Optional[Dict[str, Any]]:
     except Exception as exc:
         logger.debug(f"No se pudo cargar configuracion_planes_notificaciones para cliente {cid}: {exc}")
 
+    cliente["logo"] = normalize_drive_logo_url(cliente.get("logo"))
+
     notif_detalle_data = get_cliente_notificaciones_y_plantillas(
         cid,
         str(cliente.get("plan_id") or ""),
@@ -801,6 +858,7 @@ def _dashboard(cid: int) -> Optional[Dict[str, Any]]:
         "notificaciones_config": notif_cfg,
         "notificaciones_detalle": notif_detalle_data["notificaciones"],
         "plantilla_variables": notif_detalle_data["variables"],
+        "ultima_plantilla": notif_detalle_data.get("ultima_plantilla"),
         "usuarios_app": usuarios_app,
         "usuarios_activos_count": usuarios_activos_count,
         "max_usuarios": max_usr,
@@ -892,11 +950,13 @@ async def mi_portal(request: Request):
     except Exception:
         logger.exception("Error cargando dashboard")
         raise HTTPException(status_code=500, detail="No pudimos cargar tu portal. Intenta de nuevo.")
-    if not data or data["cliente"].get("estado") != "activo":
+    if not data or data["cliente"].get("estado") not in ("activo", "pendiente_pago"):
         return RedirectResponse("/salir", status_code=302)
+    pago_pendiente = (data["cliente"].get("estado") == "pendiente_pago")
     return templates.TemplateResponse(
         request=request, name="mi_portal.html",
         context={"sesion": sesion, "d": data, "is_superadmin": False,
+                 "pago_pendiente": pago_pendiente,
                  "soporte_email": SOPORTE_EMAIL, "wesbyte_app_url": WESBYTE_APP_URL,
                  "app_version": APP_VERSION},
     )
@@ -1171,6 +1231,7 @@ async def api_crear_usuario_app(request: Request, payload: Dict[str, Any] = Body
     raw_username = email
     permiso = str(payload.get("permiso", "")).strip().lower()
     permisos_seguros = payload.get("permisos_seguros")
+    permisos_paneles = payload.get("permisos_paneles")
 
     if not nombre_completo:
         raise HTTPException(status_code=400, detail="El nombre completo es obligatorio.")
@@ -1179,19 +1240,17 @@ async def api_crear_usuario_app(request: Request, payload: Dict[str, Any] = Body
     if " " in raw_username or len(raw_username) < 3:
         raise HTTPException(status_code=400, detail="El nombre de usuario no debe contener espacios y debe tener al menos 3 caracteres.")
 
+    selected_paneles = _parse_csv_or_list(permisos_paneles, PANELES_VALIDOS)
+    if not selected_paneles:
+        raise HTTPException(status_code=400, detail="Debes seleccionar al menos un panel al que tendrá acceso el colaborador.")
+    permisos_paneles_str = ",".join(selected_paneles)
+
     roles_permitidos = ["supervisor", "actualizador", "visualizador"]
     if permiso not in roles_permitidos:
-        raise HTTPException(status_code=400, detail=f"Rol no válido. Debe ser uno de: {', '.join(roles_permitidos)}.")
+        permiso = _derive_legacy_permiso(selected_paneles)
 
     # Validar selector de ramos de seguros
-    ramos_validos = ["registros_medicos", "registros_vehiculares", "registros_vida_e_inversion", "registros_ramos_generales"]
-    if isinstance(permisos_seguros, list):
-        selected_ramos = [r for r in permisos_seguros if r in ramos_validos]
-    elif isinstance(permisos_seguros, str):
-        selected_ramos = [r.strip() for r in permisos_seguros.split(",") if r.strip() in ramos_validos]
-    else:
-        selected_ramos = []
-
+    selected_ramos = _parse_csv_or_list(permisos_seguros, RAMOS_VALIDOS)
     if not selected_ramos:
         raise HTTPException(status_code=400, detail="Debes seleccionar al menos un tipo de seguro al que tendrá acceso el colaborador.")
 
@@ -1228,6 +1287,7 @@ async def api_crear_usuario_app(request: Request, payload: Dict[str, Any] = Body
         "activo": True,
         "debe_cambiar_password": True,
         "permisos_seguros": permisos_seguros_str,
+        "permisos_paneles": permisos_paneles_str,
         "ultimo_login": None,
         "login_count": 0,
         "created_at": now_ts,
@@ -1259,6 +1319,7 @@ async def api_crear_usuario_app(request: Request, payload: Dict[str, Any] = Body
 
     # 3. Sincronizar en target_dataset.maestra_usuarios_app si existe
     try:
+        execute_query(f"ALTER TABLE `{P}.{dataset_id}.maestra_usuarios_app` ADD COLUMN IF NOT EXISTS permisos_paneles STRING")
         append_rows(dataset_id, "maestra_usuarios_app", [{
             "id": str(uuid.uuid4()),
             "username": raw_username,
@@ -1272,6 +1333,7 @@ async def api_crear_usuario_app(request: Request, payload: Dict[str, Any] = Body
             "usuario_creador": sesion.get("sub", "cliente"),
             "usuario_modificador": sesion.get("sub", "cliente"),
             "permisos_seguros": permisos_seguros_str,
+            "permisos_paneles": permisos_paneles_str,
         }])
     except Exception as exc:
         logger.warning(f"No se pudo insertar en {dataset_id}.maestra_usuarios_app: {exc}")
@@ -1301,6 +1363,7 @@ async def api_crear_usuario_app(request: Request, payload: Dict[str, Any] = Body
             "nombre_completo": nombre_completo,
             "permiso": permiso,
             "permisos_seguros": permisos_seguros_str,
+            "permisos_paneles": permisos_paneles_str,
         }
     }
 
@@ -1388,28 +1451,25 @@ async def api_editar_usuario_app(request: Request, payload: Dict[str, Any] = Bod
     password = str(payload.get("password", "")).strip()
     permiso = str(payload.get("permiso", "")).strip().lower()
     permisos_seguros = payload.get("permisos_seguros")
+    permisos_paneles = payload.get("permisos_paneles")
 
     if not nombre_completo:
         raise HTTPException(status_code=400, detail="El nombre completo es obligatorio.")
 
-    # Validar rol
+    # Validar paneles y rol legacy compatible
     if es_admin:
         nuevo_permiso = "administrador"
+        permisos_paneles_str = ALL_PANELES_STR
     else:
+        selected_paneles = _parse_csv_or_list(permisos_paneles, PANELES_VALIDOS)
+        if not selected_paneles:
+            raise HTTPException(status_code=400, detail="Debes seleccionar al menos un panel al que tendrá acceso el colaborador.")
+        permisos_paneles_str = ",".join(selected_paneles)
         roles_permitidos = ["supervisor", "actualizador", "visualizador"]
-        if permiso not in roles_permitidos:
-            raise HTTPException(status_code=400, detail=f"Rol no válido. Debe ser uno de: {', '.join(roles_permitidos)}.")
-        nuevo_permiso = permiso
+        nuevo_permiso = permiso if permiso in roles_permitidos else _derive_legacy_permiso(selected_paneles)
 
     # Validar selector de ramos
-    ramos_validos = ["registros_medicos", "registros_vehiculares", "registros_vida_e_inversion", "registros_ramos_generales"]
-    if isinstance(permisos_seguros, list):
-        selected_ramos = [r for r in permisos_seguros if r in ramos_validos]
-    elif isinstance(permisos_seguros, str):
-        selected_ramos = [r.strip() for r in permisos_seguros.split(",") if r.strip() in ramos_validos]
-    else:
-        selected_ramos = []
-
+    selected_ramos = _parse_csv_or_list(permisos_seguros, RAMOS_VALIDOS)
     if not selected_ramos:
         raise HTTPException(status_code=400, detail="Debes seleccionar al menos un tipo de seguro al que tendrá acceso el colaborador.")
 
@@ -1432,7 +1492,8 @@ async def api_editar_usuario_app(request: Request, payload: Dict[str, Any] = Bod
         SET nombre_completo = '{clean_nombre}',
             email = '{clean_email}',
             permiso = '{nuevo_permiso}',
-            permisos_seguros = '{permisos_str}'
+            permisos_seguros = '{permisos_str}',
+            permisos_paneles = '{permisos_paneles_str}'
             {update_pw_clause},
             updated_at = CURRENT_TIMESTAMP()
         WHERE id = {usuario_id} AND cliente_id = {cliente_id}
@@ -1454,11 +1515,13 @@ async def api_editar_usuario_app(request: Request, payload: Dict[str, Any] = Bod
 
     # Actualizar en target dataset maestra_usuarios_app
     try:
+        execute_query(f"ALTER TABLE `{P}.{ds}.maestra_usuarios_app` ADD COLUMN IF NOT EXISTS permisos_paneles STRING")
         pw_part_target = f", password = '{pw_hash}'" if pw_hash else ""
         execute_query(f"""
             UPDATE `{P}.{ds}.maestra_usuarios_app`
             SET access = '{nuevo_permiso}',
                 permisos_seguros = '{permisos_str}',
+                permisos_paneles = '{permisos_paneles_str}',
                 fecha_modificacion = CURRENT_TIMESTAMP()
                 {pw_part_target}
             WHERE LOWER(TRIM(username)) = LOWER(TRIM('{username}'))
@@ -1475,6 +1538,7 @@ async def api_editar_usuario_app(request: Request, payload: Dict[str, Any] = Bod
             "nombre_completo": nombre_completo,
             "permiso": nuevo_permiso,
             "permisos_seguros": permisos_str,
+            "permisos_paneles": permisos_paneles_str,
         }
     }
 
@@ -1626,6 +1690,7 @@ async def api_guardar_plantilla_notificacion(request: Request, payload: Dict[str
             canal=str(payload.get("canal") or ""),
             asunto=payload.get("asunto"),
             mensaje=str(payload.get("mensaje") or ""),
+            es_html=bool(payload.get("es_html", False)),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -1763,4 +1828,35 @@ async def api_subir_logo_cliente(request: Request, file: UploadFile = File(...))
         "logo_url": logo_url,
         "file_id": drive_res["file_id"],
         "message": "Logo guardado en Google Drive (clientes/logos) correctamente.",
+    }
+
+
+@router.post("/api/cliente/empresa")
+async def api_guardar_datos_empresa(request: Request, payload: Dict[str, Any] = Body(...)):
+    """Actualiza nombre (nombre_empresa) y ruc_cedula del cliente en wesbyte.administracion.clientes."""
+    sesion = get_sesion(request)
+    if not sesion or not sesion.get("cid"):
+        raise HTTPException(status_code=401, detail="Sesión expirada. Inicia sesión nuevamente.")
+
+    cliente_id = int(sesion["cid"])
+    nombre_empresa = str(payload.get("nombre_empresa") or "").strip()
+    ruc_cedula = str(payload.get("ruc_cedula") or "").strip()
+    if len(nombre_empresa) < 2:
+        raise HTTPException(status_code=400, detail="El nombre de la empresa debe tener al menos 2 caracteres.")
+    if len(ruc_cedula) < 5:
+        raise HTTPException(status_code=400, detail="Ingresa un RUC o cédula válido.")
+
+    clean_nombre = nombre_empresa.replace("'", "''")
+    clean_ruc = ruc_cedula.replace("'", "''")
+    execute_query(f"""
+        UPDATE `{P}.{W}.clientes`
+        SET nombre = '{clean_nombre}',
+            ruc_cedula = '{clean_ruc}'
+        WHERE id = {cliente_id}
+    """)
+    return {
+        "success": True,
+        "nombre_empresa": nombre_empresa,
+        "ruc_cedula": ruc_cedula,
+        "message": "Datos de tu empresa actualizados correctamente.",
     }

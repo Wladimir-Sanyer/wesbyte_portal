@@ -174,14 +174,13 @@ class EmailService:
     ) -> str:
         """
         Genera la plantilla HTML responsive con diseño moderno, elegante y formal,
-        con el logo del cliente (si existe), el logo de Wesbyte y footer 'enviado por wesbyte.app'.
+        con el logo del cliente (si existe) y footer 'enviado por wesbyte.app'.
         """
         nombre_limpio = (nombre_cliente or "Estimado/a Cliente").strip().title()
         broker_limpio = (nombre_broker or "Tu Asesor de Seguros").strip()
-        wesbyte_logo_url = f"{WESBYTE_APP_URL.rstrip('/')}/static/img/wesbyte-logo-wave-sine-integrated.png"
         cliente_logo_html = (
             f'<img src="{logo_cliente_url.strip()}" alt="{broker_limpio}" '
-            f'style="max-height:56px;max-width:180px;object-fit:contain;border-radius:8px;background:#fff;padding:6px 10px;" />'
+            f'style="max-height:130px;max-width:340px;object-fit:contain;border-radius:10px;background:#fff;padding:8px 12px;" />'
             if logo_cliente_url and logo_cliente_url.strip()
             else f'<span style="font-size:16px;font-weight:800;color:#ffffff;letter-spacing:0.02em;">{broker_limpio}</span>'
         )
@@ -309,14 +308,15 @@ class EmailService:
     .footer {{
       background-color: #f8fafc;
       border-top: 1px solid #e2e8f0;
-      padding: 24px 32px;
+      padding: 12px 24px;
       text-align: center;
-      font-size: 12px;
+      font-size: 10px;
       color: #94a3b8;
-      line-height: 1.6;
+      letter-spacing: 0.03em;
+      line-height: 1.5;
     }}
     .footer a {{
-      color: #2563eb;
+      color: #64748b;
       text-decoration: none;
       font-weight: 600;
     }}
@@ -342,13 +342,10 @@ class EmailService:
   <div style="background-color: #f1f5f9; padding: 24px 12px;">
     <div class="email-container">
       
-      <!-- HEADER CON LOGO DEL CLIENTE Y DE WESBYTE -->
+      <!-- HEADER CON LOGO DEL CLIENTE -->
       <div class="header-banner">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
-          <div>{cliente_logo_html}</div>
-          <div>
-            <img src="{wesbyte_logo_url}" alt="Wesbyte" style="max-height:34px;object-fit:contain;filter:brightness(0) invert(1);" />
-          </div>
+        <div style="margin-bottom:20px;text-align:center;">
+          {cliente_logo_html}
         </div>
         <div class="birthday-icon">🎉</div>
         <h1 class="main-title">¡Feliz Cumpleaños, {nombre_limpio}!</h1>
@@ -395,6 +392,60 @@ class EmailService:
 </body>
 </html>
 """
+
+    @staticmethod
+    def generate_notification_html(
+        asunto: str,
+        cuerpo_texto: str,
+        nombre_broker: str,
+        logo_cliente_url: Optional[str] = None,
+        email_broker: Optional[str] = None,
+    ) -> str:
+        """
+        Genera el HTML de un correo transaccional/notificación preservando saltos de línea (\n -> <br>),
+        mostrando el logo del cliente en el encabezado, nombre_broker en la firma inferior
+        y el pie muy pequeño 'enviado por wesbyte.app'.
+        """
+        import html as _html
+        from app.services.google_drive_service import normalize_drive_logo_url
+
+        broker_limpio = _html.escape((nombre_broker or "Tu Asesor de Seguros").strip())
+        asunto_limpio = _html.escape((asunto or "Notificación").strip())
+        cuerpo_html = _html.escape(str(cuerpo_texto or "")).replace("\r\n", "\n").replace("\n", "<br>")
+        logo_norm = normalize_drive_logo_url(logo_cliente_url)
+        logo_html = (
+            f'<img src="{_html.escape(logo_norm)}" alt="{broker_limpio}" '
+            f'style="max-height:130px;max-width:340px;object-fit:contain;border-radius:10px;background:#fff;padding:8px 12px;" />'
+            if logo_norm
+            else f'<span style="font-size:17px;font-weight:800;color:#ffffff;">{broker_limpio}</span>'
+        )
+        email_html = (
+            f'<div style="font-size:12px;color:#64748b;margin-top:2px;">{_html.escape(email_broker.strip())}</div>'
+            if email_broker and email_broker.strip()
+            else ""
+        )
+        return f"""<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#1e293b;">
+  <div style="max-width:600px;margin:28px auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;">
+    <div style="background:linear-gradient(135deg,#0f172a,#1e3a8a,#2563eb);padding:24px 28px;display:flex;justify-content:space-between;align-items:center;">
+      <div>{logo_html}</div>
+    </div>
+    <div style="padding:28px;font-size:15px;line-height:1.65;color:#1e293b;">
+      <h2 style="margin:0 0 16px;font-size:18px;font-weight:800;color:#0f172a;">{asunto_limpio}</h2>
+      <div style="white-space:pre-line;">{cuerpo_html}</div>
+      <div style="margin-top:24px;padding-top:16px;border-top:1px solid #e2e8f0;">
+        <div style="font-size:14px;font-weight:800;color:#0f172a;">{broker_limpio}</div>
+        {email_html}
+      </div>
+    </div>
+    <div style="padding:12px 24px;background:#f8fafc;text-align:center;border-top:1px solid #e2e8f0;">
+      <span style="font-size:10px;color:#94a3b8;">enviado por <a href="https://wesbyte.app" style="color:#94a3b8;text-decoration:underline;">wesbyte.app</a></span>
+    </div>
+  </div>
+</body>
+</html>"""
 
     @staticmethod
     def generate_birthday_text(

@@ -52,7 +52,7 @@ def build_payphone_box_config(
 ) -> Dict[str, Any]:
     """
     Construye el objeto de configuración para la Cajita de Pagos PayPhone (PPPaymentButtonBox)
-    y los metadatos de cobro único anual (10% descuento) o cobro mensual recurrente.
+    y los metadatos de pago único (1, 2 o 3 años).
     Nota: PayPhone recibe todos los montos en centavos (enteros). Ej: $216.00 -> 21600.
     """
     monto_centavos = int(round(float(monto_usd) * 100))
@@ -168,7 +168,7 @@ async def create_payphone_payment_link(
 ) -> Dict[str, Any]:
     """
     Genera un Link de Pago directo vía API de PayPhone (/api/Links) o Botón (/api/button/Prepare)
-    para cobro único o recurrente.
+    para pago único.
     """
     token = (custom_token or PAYPHONE_TOKEN or "").strip()
     store_id = (custom_store_id or PAYPHONE_STORE_ID or "").strip()
