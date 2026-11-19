@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import APP_VERSION
 from app.database import init_wesbytes_schema_and_seeds
-from app.routers import portal, cliente, internal_notifications
+from app.routers import portal, cliente, internal_notifications, media
 
 logging.basicConfig(
     level=logging.INFO,
@@ -82,6 +82,7 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 app.include_router(portal.router)
 app.include_router(cliente.router)
 app.include_router(internal_notifications.router)
+app.include_router(media.router)
 
 
 @app.get("/health")

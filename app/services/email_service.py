@@ -176,12 +176,15 @@ class EmailService:
         Genera la plantilla HTML responsive con diseño moderno, elegante y formal,
         con el logo del cliente (si existe) y footer 'enviado por wesbyte.app'.
         """
+        from app.services.google_drive_service import normalize_drive_logo_url
+
         nombre_limpio = (nombre_cliente or "Estimado/a Cliente").strip().title()
         broker_limpio = (nombre_broker or "Tu Asesor de Seguros").strip()
+        logo_proxied = normalize_drive_logo_url(logo_cliente_url)
         cliente_logo_html = (
-            f'<img src="{logo_cliente_url.strip()}" alt="{broker_limpio}" '
+            f'<img src="{logo_proxied}" alt="{broker_limpio}" '
             f'style="max-height:130px;max-width:340px;object-fit:contain;border-radius:10px;background:#fff;padding:8px 12px;" />'
-            if logo_cliente_url and logo_cliente_url.strip()
+            if logo_proxied
             else f'<span style="font-size:16px;font-weight:800;color:#ffffff;letter-spacing:0.02em;">{broker_limpio}</span>'
         )
         broker_email_html = (

@@ -1,5 +1,5 @@
-import json
 import logging
+import re
 import uuid
 from typing import Dict, Optional
 import httpx
@@ -8,6 +8,7 @@ from app.config import (
     GOOGLE_DRIVE_CLIENT_ID,
     GOOGLE_DRIVE_CLIENT_SECRET,
     GOOGLE_DRIVE_REFRESH_TOKEN,
+    MEDIA_PUBLIC_BASE_URL,
 )
 
 logger = logging.getLogger("wesbyte_portal.services.google_drive")
@@ -157,7 +158,7 @@ class GoogleDriveService:
         if perm_resp.status_code >= 400:
             logger.warning(f"No se pudo asignar permiso público al archivo {file_id}: {perm_resp.text}")
 
-        public_url = f"https://lh3.googleusercontent.com/d/{file_id}"
+        public_url = get_proxied_drive_url(file_id)
         return {
             "file_id": file_id,
             "filename": data.get("name", filename),
@@ -166,14 +167,39 @@ class GoogleDriveService:
         }
 
 
-def normalize_drive_logo_url(url: Optional[str]) -> str:
-    """Convierte URLs antiguas de Drive uc?export=view&id=... a lh3.googleusercontent.com/d/... para renderizar sin bloqueo CORS."""
-    raw = str(url or "").strip()
+def extract_drive_file_id(drive_url_or_id: Optional[str]) -> str:
+    """Extrae el file_id de un enlace de Google Drive, lh3.googleusercontent.com, /api/media/ o ID directo."""
+    raw = str(drive_url_or_id or "").strip()
     if not raw:
         return ""
-    if "drive.google.com" in raw:
-        import re
-        m = re.search(r"[?&]id=([A-Za-z0-9_-]+)", raw) or re.search(r"/file/d/([A-Za-z0-9_-]+)", raw)
+    if re.fullmatch(r"[A-Za-z0-9_-]{15,120}", raw):
+        return raw
+    patterns = (
+        r"lh3\.googleusercontent\.com/d/([A-Za-z0-9_-]+)",
+        r"/file/d/([A-Za-z0-9_-]+)",
+        r"/api/media/([A-Za-z0-9_-]+)",
+        r"/media/([A-Za-z0-9_-]+)",
+        r"[?&]id=([A-Za-z0-9_-]+)",
+    )
+    for pat in patterns:
+        m = re.search(pat, raw)
         if m:
-            return f"https://lh3.googleusercontent.com/d/{m.group(1)}"
+            return m.group(1)
+    return ""
+
+
+def get_proxied_drive_url(drive_url_or_id: Optional[str], base_url: Optional[str] = None) -> str:
+    """Convierte cualquier URL o ID de Google Drive en una URL pública bajo el dominio propio de Wesbyte."""
+    raw = str(drive_url_or_id or "").strip()
+    if not raw:
+        return ""
+    file_id = extract_drive_file_id(raw)
+    if file_id:
+        base = (base_url or MEDIA_PUBLIC_BASE_URL or "https://portal.wesbyte.app").rstrip("/")
+        return f"{base}/api/media/{file_id}"
     return raw
+
+
+def normalize_drive_logo_url(url: Optional[str]) -> str:
+    """Convierte URLs de Google Drive o lh3.googleusercontent.com a URL propia de Wesbyte (/api/media/{file_id})."""
+    return get_proxied_drive_url(url)
