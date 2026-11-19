@@ -195,7 +195,7 @@ def get_proxied_drive_url(drive_url_or_id: Optional[str], base_url: Optional[str
         return ""
     file_id = extract_drive_file_id(raw)
     if file_id:
-        base = (base_url or MEDIA_PUBLIC_BASE_URL or "https://portal.wesbyte.app").rstrip("/")
+        base = (base_url or MEDIA_PUBLIC_BASE_URL or "https://wesbyte.app").rstrip("/")
         return f"{base}/api/media/{file_id}"
     return raw
 

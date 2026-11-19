@@ -41,7 +41,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 
 APP_VERSION = os.getenv("APP_VERSION", "v1.0.0")
 WESBYTE_APP_URL = os.getenv("WESBYTE_APP_URL", "https://portal.wesbyte.app")
-MEDIA_PUBLIC_BASE_URL = os.getenv("MEDIA_PUBLIC_BASE_URL", WESBYTE_APP_URL).strip().rstrip("/")
+MEDIA_PUBLIC_BASE_URL = os.getenv("MEDIA_PUBLIC_BASE_URL", "https://wesbyte.app").strip().rstrip("/")
 SOPORTE_EMAIL = os.getenv("SOPORTE_EMAIL", "soporte@wesbyte.app")
 
 # Configuración PayPhone
