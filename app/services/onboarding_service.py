@@ -341,13 +341,23 @@ def completar_upgrade_payphone(
                     updated_at = CURRENT_TIMESTAMP()
                 WHERE cliente_id = {int(cliente_id)} AND estado IN ('activa', 'por_vencer')
             """)
-    elif modalidad == "mejora_usuarios":
-        adicionales = max(1, int(raw_meta.get("usuarios_adicionales") or 1))
-        execute_query(f"""
-            UPDATE `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.clientes`
-            SET max_usuarios = IFNULL(max_usuarios, 1) + {adicionales}
-            WHERE id = {int(cliente_id)}
-        """)
+    elif modalidad in ("mejora_usuarios", "mejora_recursos"):
+        u_extra = max(0, int(raw_meta.get("usuarios_adicionales") or (1 if modalidad == "mejora_usuarios" else 0)))
+        e_extra = max(0, int(raw_meta.get("emails_adicionales") or 0))
+        w_extra = max(0, int(raw_meta.get("whatsapp_adicionales") or 0))
+        set_parts = []
+        if u_extra > 0:
+            set_parts.append(f"max_usuarios = IFNULL(max_usuarios, 1) + {u_extra}")
+        if e_extra > 0:
+            set_parts.append(f"limite_mensual_emails = IFNULL(limite_mensual_emails, 0) + {e_extra}")
+        if w_extra > 0:
+            set_parts.append(f"limite_mensual_whatsapp = IFNULL(limite_mensual_whatsapp, 0) + {w_extra}")
+        if set_parts:
+            execute_query(f"""
+                UPDATE `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.clientes`
+                SET {', '.join(set_parts)}
+                WHERE id = {int(cliente_id)}
+            """)
         execute_query(f"""
             UPDATE `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.suscripciones`
             SET monto_total_cobrado = IFNULL(monto_total_cobrado, 0) + NUMERIC '{monto_pagado:.2f}',

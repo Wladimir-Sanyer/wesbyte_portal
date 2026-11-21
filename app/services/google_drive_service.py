@@ -1,7 +1,10 @@
+import json
 import logging
 import re
+import threading
+import time
 import uuid
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 import httpx
 
 from app.config import (
@@ -12,6 +15,11 @@ from app.config import (
 )
 
 logger = logging.getLogger("wesbyte_portal.services.google_drive")
+
+_DRIVE_LOCK = threading.Lock()
+_TOKEN_CACHE: Dict[str, Tuple[float, str]] = {}
+_FOLDER_ID_CACHE: Dict[str, str] = {}
+_TOKEN_TTL_SECONDS = 3000  # 50 minutos (OAuth2 access_token dura 60 min)
 
 
 class GoogleDriveServiceError(Exception):
@@ -41,6 +49,13 @@ class GoogleDriveService:
             raise GoogleDriveServiceError(
                 "Faltan credenciales de Google Drive (GOOGLE_DRIVE_CLIENT_ID / SECRET / REFRESH_TOKEN)."
             )
+        cache_key = f"{self.client_id}:{self.refresh_token[:12]}"
+        now = time.time()
+        with _DRIVE_LOCK:
+            cached = _TOKEN_CACHE.get(cache_key)
+            if cached and (now - cached[0]) < _TOKEN_TTL_SECONDS:
+                return cached[1]
+
         resp = httpx.post(
             self.TOKEN_URL,
             data={
@@ -56,6 +71,9 @@ class GoogleDriveService:
         token = resp.json().get("access_token")
         if not token:
             raise GoogleDriveServiceError("Google OAuth2 no devolvió access_token.")
+
+        with _DRIVE_LOCK:
+            _TOKEN_CACHE[cache_key] = (now, token)
         return token
 
     def _find_or_create_folder(self, name: str, parent_id: Optional[str], token: str) -> str:
@@ -103,12 +121,24 @@ class GoogleDriveService:
 
     def ensure_folder_path(self, folder_path: str = "clientes/logos", token: Optional[str] = None) -> str:
         """Asegura la jerarquía de carpetas (ej. clientes/logos) y retorna el ID de la carpeta final."""
+        norm_path = "/".join(p.strip() for p in folder_path.split("/") if p.strip())
+        if not norm_path:
+            raise GoogleDriveServiceError("La ruta de carpeta en Drive no puede estar vacía.")
+        cache_key = f"{self.client_id}:{norm_path}"
+        with _DRIVE_LOCK:
+            cached_fid = _FOLDER_ID_CACHE.get(cache_key)
+        if cached_fid:
+            return cached_fid
+
         tok = token or self._get_access_token()
         parent_id: Optional[str] = None
-        for part in [p.strip() for p in folder_path.split("/") if p.strip()]:
+        for part in norm_path.split("/"):
             parent_id = self._find_or_create_folder(part, parent_id, tok)
         if not parent_id:
             raise GoogleDriveServiceError("La ruta de carpeta en Drive no puede estar vacía.")
+
+        with _DRIVE_LOCK:
+            _FOLDER_ID_CACHE[cache_key] = parent_id
         return parent_id
 
     def upload_logo(

@@ -443,12 +443,45 @@ def init_wesbytes_schema_and_seeds() -> None:
         asunto STRING,
         mensaje STRING NOT NULL,
         es_html BOOL,
+        config_json STRING,
         fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP() NOT NULL,
         fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP() NOT NULL
     )
     """)
 
-    ensure_columns_exist(WESBYTES_DATASET_ID, "plantillas_notificaciones", {"es_html": "BOOL"})
+    ensure_columns_exist(
+        WESBYTES_DATASET_ID,
+        "plantillas_notificaciones",
+        {
+            "es_html": "BOOL",
+            "config_json": "STRING",
+        },
+    )
+
+    # 6e. Tabla logs_ia_plantillas (cuota mensual y auditoría de generaciones IA de plantillas de correo)
+    execute_query(f"""
+    CREATE TABLE IF NOT EXISTS `{dataset_ref}.logs_ia_plantillas` (
+        id INT64 NOT NULL,
+        client_id INT64 NOT NULL,
+        notificacion_codigo STRING NOT NULL,
+        periodo STRING NOT NULL,
+        prompt_resumen STRING,
+        modelo STRING,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP() NOT NULL
+    )
+    """)
+
+    # 6f. Tabla logs_pruebas_notificaciones (control de límite de 3 pruebas por notificación en Plan Demo)
+    execute_query(f"""
+    CREATE TABLE IF NOT EXISTS `{dataset_ref}.logs_pruebas_notificaciones` (
+        id INT64 NOT NULL,
+        client_id INT64 NOT NULL,
+        notificacion_codigo STRING NOT NULL,
+        canal STRING NOT NULL,
+        destino STRING,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP() NOT NULL
+    )
+    """)
     ensure_columns_exist(
         WESBYTES_DATASET_ID,
         "clientes",

@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 import json
 import datetime
@@ -34,7 +35,8 @@ from app.config import (
     normalizar_periodo,
 )
 from app.services.google_drive_service import GoogleDriveService, GoogleDriveServiceError
-from app.routers.cliente import get_sesion
+from app.routers.media import prime_media_cache
+from app.routers.cliente import get_sesion, invalidate_cliente_cache
 from app.database import (
     get_bq_client,
     get_query,
@@ -252,7 +254,8 @@ async def api_registro_subir_logo(cliente_id: int, file: UploadFile = File(...))
     drive_filename = f"cliente_{int(cliente_id)}_{uuid.uuid4().hex[:8]}.{ext}"
 
     try:
-        drive_res = GoogleDriveService().upload_logo(
+        drive_res = await asyncio.to_thread(
+            GoogleDriveService().upload_logo,
             file_bytes=content,
             filename=drive_filename,
             mime_type=mime_type,
@@ -262,20 +265,26 @@ async def api_registro_subir_logo(cliente_id: int, file: UploadFile = File(...))
         logger.error(f"Error subiendo logo en registro a Google Drive: {exc}")
         raise HTTPException(status_code=500, detail=f"Error subiendo logo a Google Drive: {str(exc)}")
 
+    prime_media_cache(drive_res.get("file_id", ""), mime_type, content)
     logo_url = drive_res["url"]
     clean_url = logo_url.replace("'", "''")
-    execute_query(f"""
+    await asyncio.to_thread(
+        execute_query,
+        f"""
         UPDATE `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.clientes`
         SET logo = '{clean_url}'
         WHERE id = {int(cliente_id)}
-    """)
+        """,
+    )
     return {"success": True, "logo_url": logo_url}
 
 
-def _recover_checkout_from_bq(cliente_id: int) -> Optional[Dict[str, Any]]:
+def _recover_checkout_from_bq(cliente_id: int, plan_codigo: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Recupera la información del cliente y su usuario admin desde BigQuery si el servidor se reinició."""
-    if cliente_id in _active_checkouts:
-        return _active_checkouts[cliente_id]
+    if cliente_id in _active_checkouts and not plan_codigo:
+        cached = _active_checkouts[cliente_id]
+        if cached.get("plan") and cached["plan"].get("precio_anual"):
+            return cached
 
     df_c = get_query(f"""
         SELECT * FROM `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.clientes`
@@ -294,8 +303,13 @@ def _recover_checkout_from_bq(cliente_id: int) -> Optional[Dict[str, Any]]:
     """)
     u_row = df_u.iloc[0].to_dict() if not df_u.empty else {}
 
-    plan_id = int(c_row.get("plan_id") or 3)
-    plan = get_plan_by_code_or_id(str(plan_id))
+    raw_plan_id = int(c_row.get("plan_id") or 0)
+    if plan_codigo:
+        plan = get_plan_by_code_or_id(plan_codigo)
+    elif raw_plan_id <= 0 or bool(c_row.get("es_demo")):
+        plan = get_plan_by_code_or_id("SUPER_GOLD")
+    else:
+        plan = get_plan_by_code_or_id(str(raw_plan_id))
 
     recovered = {
         "cliente_id": int(cliente_id),
@@ -323,12 +337,13 @@ async def checkout_page(
     request: Request,
     cliente_id: int,
     periodo: Optional[str] = Query(None),
+    plan_codigo: Optional[str] = Query(None),
 ):
     """
     Paso 2 -> Paso 3: Pantalla dedicada de Checkout con PayPhone con pagos únicos:
     1 Año (base), 2 Años (-10%) o 3 Años (-15%).
     """
-    reg_data = _recover_checkout_from_bq(cliente_id)
+    reg_data = _recover_checkout_from_bq(cliente_id, plan_codigo=plan_codigo)
     if not reg_data:
         return RedirectResponse(url="/", status_code=302)
 
@@ -525,7 +540,7 @@ async def payphone_redirect_callback(
     modalidad = str(intento["modalidad_pago"]) if intento and intento.get("modalidad_pago") else "pago_unico_1_year"
 
     if intento and str(intento.get("estado_pago") or "").upper() == "APPROVED" and cliente_id:
-        if modalidad in ("upgrade_plan", "mejora_usuarios"):
+        if modalidad in ("upgrade_plan", "mejora_usuarios", "mejora_recursos"):
             return RedirectResponse(url="/mi-portal?upgrade=ok", status_code=302)
         return RedirectResponse(url=f"/exito/{cliente_id}", status_code=302)
 
@@ -541,7 +556,7 @@ async def payphone_redirect_callback(
     if not cliente_id:
         return RedirectResponse(url="/", status_code=302)
 
-    es_upgrade = modalidad in ("upgrade_plan", "mejora_usuarios")
+    es_upgrade = modalidad in ("upgrade_plan", "mejora_usuarios", "mejora_recursos")
     reg_data = None if es_upgrade else _recover_checkout_from_bq(cliente_id)
     if not es_upgrade and not reg_data:
         return RedirectResponse(url="/", status_code=302)
@@ -580,6 +595,7 @@ async def payphone_redirect_callback(
             intento=intento,
             payment_info=payment_info,
         )
+        invalidate_cliente_cache(cliente_id)
         return RedirectResponse(url="/mi-portal?upgrade=ok", status_code=302)
 
     result = complete_payment_and_provision(

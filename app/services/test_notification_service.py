@@ -130,7 +130,7 @@ def get_dummy_variables(broker_nombre: str = "Seguros Alianza") -> Dict[str, str
 
 
 def render_template_with_dummy_data(text: str, broker_nombre: str = "Seguros Alianza") -> str:
-    """Reemplaza todas las variables {clave} en el texto usando datos ficticios realistas."""
+    """Reemplaza todas las variables {{clave}} y {clave} en el texto usando datos ficticios realistas."""
     if not text:
         return ""
     vars_map = get_dummy_variables(broker_nombre)
@@ -139,7 +139,8 @@ def render_template_with_dummy_data(text: str, broker_nombre: str = "Seguros Ali
         key = match.group(1).strip()
         return vars_map.get(key, match.group(0))
 
-    return re.sub(r"\{([a-zA-Z0-9_]+)\}", _replace, text)
+    out = re.sub(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}", _replace, text)
+    return re.sub(r"(?<!\{)\{([a-zA-Z0-9_]+)\}(?!\})", _replace, out)
 
 
 def _wrap_test_email_html(
@@ -157,10 +158,12 @@ def _wrap_test_email_html(
     )
 
     if es_html:
-        content_html = body.replace("{logo}", logo_img_html)
+        content_html = body.replace("{{logo}}", logo_img_html).replace("{logo}", logo_img_html)
+        if re.search(r"<!DOCTYPE|<html\b|<table\b", content_html, re.IGNORECASE):
+            return content_html
     else:
         logo_token = "__WESBYTE_LOGO_PLACEHOLDER__"
-        body_tok = body.replace("{logo}", logo_token)
+        body_tok = body.replace("{{logo}}", logo_token).replace("{logo}", logo_token)
         paragraphs = [
             f"<p style='margin:0 0 12px 0;line-height:1.6;'>{html.escape(p).replace(chr(10), '<br>').replace(logo_token, logo_img_html)}</p>"
             for p in body_tok.split("\n\n")

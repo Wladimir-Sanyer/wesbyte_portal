@@ -31,7 +31,13 @@
           <a href="/#calculadora-custom" class="nav-link-top d-none d-md-inline">Calculadora</a>
           <a href="/#integraciones" class="nav-link-top d-none d-lg-inline">Integraciones</a>
           {% if sesion %}
-          <a href="/mi-portal" class="btn btn-sm btn-warm ms-2"><i class="ti ti-layout-dashboard me-1"></i> Mi portal</a>
+          <a href="/mi-portal"
+             class="btn btn-warm ms-2 px-3 py-2 fw-bold d-inline-flex align-items-center gap-2"
+             style="border-radius:12px;font-size:0.95rem;border:1px solid rgba(255,255,255,0.35);box-shadow:0 0 0 3px rgba(245,158,11,0.28), 0 8px 20px rgba(255,90,54,0.45);">
+            <i class="ti ti-layout-dashboard fs-3"></i>
+            <span>Mi Portal</span>
+            <i class="ti ti-arrow-right fs-4"></i>
+          </a>
           <a href="/salir" class="btn btn-sm btn-outline-light ms-1">Salir</a>
           {% else %}
           <a href="/ingresar" class="btn btn-sm btn-outline-light ms-2"><i class="ti ti-login me-1"></i> Ya soy cliente</a>

@@ -425,18 +425,57 @@ class BirthdayNotificationService:
                 # 1) Correo electrónico
                 destinatario_email = item["email"]
                 if item.get("email_ok", True) and destinatario_email and "@" in destinatario_email:
-                    html_body = self.email_service.generate_birthday_html(
-                        nombre_cliente=cliente_nombre,
-                        nombre_broker=broker_name,
-                        email_broker=broker_email,
-                        logo_cliente_url=item.get("logo_url"),
-                    )
-                    text_body = self.email_service.generate_birthday_text(
-                        nombre_cliente=cliente_nombre,
-                        nombre_broker=broker_name,
-                        email_broker=broker_email,
-                    )
-                    asunto = f"🎉 ¡Feliz Cumpleaños, {item['nombre']}! — {broker_name}"
+                    custom_tpl_rows = []
+                    try:
+                        custom_tpl_rows = list(
+                            self.bq_client.query(
+                                f"""
+                                SELECT asunto, mensaje, IFNULL(es_html, FALSE) AS es_html
+                                FROM `{GCP_PROJECT_ID}.{WESBYTE_CENTRAL_DATASET}.plantillas_notificaciones`
+                                WHERE client_id = {int(cliente_id_log)}
+                                  AND notificacion_codigo = 'cumpleanios'
+                                  AND LOWER(canal) = 'email'
+                                LIMIT 1
+                                """
+                            ).result()
+                        )
+                    except Exception:
+                        custom_tpl_rows = []
+
+                    if custom_tpl_rows and str(custom_tpl_rows[0].get("mensaje") or "").strip():
+                        import re as _re
+                        raw_msg = str(custom_tpl_rows[0]["mensaje"])
+                        raw_asu = str(custom_tpl_rows[0].get("asunto") or f"🎉 ¡Feliz Cumpleaños, {item['nombre']}! — {broker_name}")
+                        vars_bday = {
+                            "nombres_completos_razon_social": cliente_nombre,
+                            "cedula": str(item.get("cedula") or ""),
+                            "broker": broker_name,
+                            "nombre_agente": broker_name,
+                            "logo": (
+                                f'<img src="{item.get("logo_url")}" alt="{broker_name}" style="max-height:70px;max-width:220px;object-fit:contain;" />'
+                                if item.get("logo_url")
+                                else broker_name
+                            ),
+                        }
+                        for k_v, v_v in vars_bday.items():
+                            raw_msg = raw_msg.replace(f"{{{{{k_v}}}}}", v_v).replace(f"{{{k_v}}}", v_v)
+                            raw_asu = raw_asu.replace(f"{{{{{k_v}}}}}", v_v).replace(f"{{{k_v}}}", v_v)
+                        html_body = raw_msg
+                        text_body = _re.sub(r"<[^>]+>", "", raw_msg)
+                        asunto = raw_asu
+                    else:
+                        html_body = self.email_service.generate_birthday_html(
+                            nombre_cliente=cliente_nombre,
+                            nombre_broker=broker_name,
+                            email_broker=broker_email,
+                            logo_cliente_url=item.get("logo_url"),
+                        )
+                        text_body = self.email_service.generate_birthday_text(
+                            nombre_cliente=cliente_nombre,
+                            nombre_broker=broker_name,
+                            email_broker=broker_email,
+                        )
+                        asunto = f"🎉 ¡Feliz Cumpleaños, {item['nombre']}! — {broker_name}"
 
                     from_sender = f"{broker_name} <notifications@wesbyte.app>" if broker_name else self.email_service.sender_default
                     reply_to = broker_email if broker_email and "@" in broker_email else None

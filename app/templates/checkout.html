@@ -12,10 +12,17 @@
 {% block content %}
 <div class="container-xl py-4">
   <!-- Barra de Progreso -->
-  <div class="d-flex flex-wrap gap-2 mb-4">
-    <span class="badge bg-green-lt text-green px-3 py-2"><i class="ti ti-check me-1"></i> 1. Plan Seleccionado ({{ plan.nombre }})</span>
-    <span class="badge bg-green-lt text-green px-3 py-2"><i class="ti ti-check me-1"></i> 2. Usuario y Empresa Registrados ({{ reg.nombre_empresa }})</span>
-    <span class="badge bg-primary text-white px-3 py-2"><i class="ti ti-credit-card me-1"></i> 3. Pago con PayPhone y Activación de Dataset</span>
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+    <div class="d-flex flex-wrap gap-2">
+      <span class="badge bg-green-lt text-green px-3 py-2"><i class="ti ti-check me-1"></i> 1. Plan Seleccionado ({{ plan.nombre }})</span>
+      <span class="badge bg-green-lt text-green px-3 py-2"><i class="ti ti-check me-1"></i> 2. Usuario y Empresa Registrados ({{ reg.nombre_empresa }})</span>
+      <span class="badge bg-primary text-white px-3 py-2"><i class="ti ti-credit-card me-1"></i> 3. Pago con PayPhone y Activación de Dataset</span>
+    </div>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Cambiar plan">
+      <a href="/checkout/{{ reg.cliente_id }}?plan_codigo=PRIME&periodo={{ periodo_inicial }}" class="btn {% if plan.codigo == 'PRIME' %}btn-primary{% else %}btn-outline-primary{% endif %} fw-bold">Plan Prime</a>
+      <a href="/checkout/{{ reg.cliente_id }}?plan_codigo=MEDIUM&periodo={{ periodo_inicial }}" class="btn {% if plan.codigo == 'MEDIUM' %}btn-primary{% else %}btn-outline-primary{% endif %} fw-bold">Plan Medium</a>
+      <a href="/checkout/{{ reg.cliente_id }}?plan_codigo=SUPER_GOLD&periodo={{ periodo_inicial }}" class="btn {% if plan.codigo == 'SUPER_GOLD' %}btn-primary{% else %}btn-outline-primary{% endif %} fw-bold">Super Gold</a>
+    </div>
   </div>
 
   <div class="row g-4">

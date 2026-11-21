@@ -4,6 +4,7 @@ Servicio de configuración de notificaciones habilitadas y plantillas personaliz
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -117,24 +118,29 @@ NOTIFICACIONES_CATALOGO: List[Dict[str, Any]] = [
         "codigo": "cumpleanios",
         "orden": 4,
         "nombre": "Envío de Cumpleaños Automático",
-        "modo": "Automático · No editable",
+        "modo": "Automático · Día del cumpleaños",
         "es_automatico": True,
-        "editable": False,
+        "editable": True,
         "icono": "ti-cake",
         "color": "pink",
         "descripcion": (
             "Felicitación automática que se envía a tus clientes el día de su cumpleaños "
-            "con la plantilla oficial del sistema. No se puede editar."
+            "con el diseño personalizado y el logo de tu agencia."
         ),
         "default_whatsapp": False,
         "default_email": True,
-        "default_asunto_email": "¡Feliz Cumpleaños de parte de {broker}!",
+        "default_asunto_email": "¡Feliz Cumpleaños, {nombres_completos_razon_social}, de parte de {broker}!",
         "default_mensaje_email": (
-            "Plantilla automática oficial del sistema: se envía con el diseño corporativo "
-            "y el logo de tu empresa el día del cumpleaños de cada cliente."
+            "Estimado/a {nombres_completos_razon_social},\n\n"
+            "Hoy es un día muy especial y queremos enviarle un cordial saludo en su cumpleaños, "
+            "deseándole un año lleno de salud, bienestar, metas cumplidas y grandes satisfacciones.\n\n"
+            "Para todo el equipo de {broker} es un privilegio acompañarle.\n"
+            "Con aprecio,\n{nombre_agente} · {broker}"
         ),
         "default_mensaje_whatsapp": (
-            "Mensaje automático oficial del sistema enviado el día del cumpleaños de cada cliente."
+            "🎉 *¡Feliz Cumpleaños, {nombres_completos_razon_social}!*\n\n"
+            "En *{broker}* te deseamos un año lleno de salud, alegría y grandes éxitos.\n\n"
+            "Con aprecio, tu asesor *{nombre_agente}*."
         ),
     },
     {
@@ -197,89 +203,123 @@ def get_cliente_notificaciones_y_plantillas(
     W = WESBYTES_DATASET_ID
     cp = [bigquery.ScalarQueryParameter("cid", "INT64", int(client_id))]
 
-    # Fallback de legacy configuracion_planes_notificaciones (para clientes existentes)
-    legacy_flags: Dict[str, bool] = {}
-    try:
-        rows_leg = _bq_rows(
-            f"""
-            SELECT correo_cumpleanios_activo, correo_renovaciones_activo,
-                   whatsapp_cumpleanios_activo, whatsapp_renovaciones_activo
-            FROM `{P}.{W}.configuracion_planes_notificaciones`
-            WHERE client_id = @cid
-            LIMIT 1
-            """,
-            cp,
-        )
-        if not rows_leg and (plan_id or plan_codigo):
+    # Ejecutar las 3 consultas de configuración en paralelo para reducir latencia en BigQuery
+    def _fetch_legacy() -> Dict[str, Any]:
+        try:
             rows_leg = _bq_rows(
                 f"""
-                SELECT correo_cumpleanios_activo, correo_renovaciones_activo,
-                       whatsapp_cumpleanios_activo, whatsapp_renovaciones_activo
+                SELECT correo_cumpleanios_activo, correo_renovaciones_activo, correo_cobros_activo,
+                       whatsapp_cumpleanios_activo, whatsapp_renovaciones_activo, whatsapp_cobros_activo
                 FROM `{P}.{W}.configuracion_planes_notificaciones`
-                WHERE client_id IS NULL AND (id_plan = @pid OR id_plan = @pcod)
+                WHERE client_id = @cid
                 LIMIT 1
                 """,
-                [
-                    bigquery.ScalarQueryParameter("pid", "STRING", str(plan_id or "")),
-                    bigquery.ScalarQueryParameter("pcod", "STRING", str(plan_codigo or "")),
-                ],
+                cp,
             )
-        if rows_leg:
-            legacy_flags = rows_leg[0]
-    except Exception as exc:
-        logger.debug(f"Legacy notificaciones fallback skipped for client {client_id}: {exc}")
+            if not rows_leg and (plan_id or plan_codigo):
+                rows_leg = _bq_rows(
+                    f"""
+                    SELECT correo_cumpleanios_activo, correo_renovaciones_activo, correo_cobros_activo,
+                           whatsapp_cumpleanios_activo, whatsapp_renovaciones_activo, whatsapp_cobros_activo
+                    FROM `{P}.{W}.configuracion_planes_notificaciones`
+                    WHERE client_id IS NULL AND (id_plan = @pid OR id_plan = @pcod)
+                    LIMIT 1
+                    """,
+                    [
+                        bigquery.ScalarQueryParameter("pid", "STRING", str(plan_id or "")),
+                        bigquery.ScalarQueryParameter("pcod", "STRING", str(plan_codigo or "")),
+                    ],
+                )
+            if rows_leg:
+                return rows_leg[0]
+        except Exception as exc:
+            logger.debug(f"Legacy notificaciones fallback skipped for client {client_id}: {exc}")
+        return {}
 
-    habilitadas_map: Dict[str, Dict[str, bool]] = {}
-    try:
-        rows_hab = _bq_rows(
-            f"""
-            SELECT notificacion_codigo, whatsapp_habilitado, email_habilitado
-            FROM `{P}.{W}.notificaciones_habilitadas`
-            WHERE client_id = @cid
-            """,
-            cp,
-        )
-        for r in rows_hab:
-            habilitadas_map[str(r["notificacion_codigo"])] = {
-                "whatsapp": bool(r.get("whatsapp_habilitado", False)),
-                "email": bool(r.get("email_habilitado", False)),
-            }
-    except Exception as exc:
-        logger.debug(f"No se pudo leer notificaciones_habilitadas para cliente {client_id}: {exc}")
+    def _fetch_habilitadas() -> Dict[str, Dict[str, bool]]:
+        out: Dict[str, Dict[str, bool]] = {}
+        try:
+            rows_hab = _bq_rows(
+                f"""
+                SELECT notificacion_codigo, whatsapp_habilitado, email_habilitado
+                FROM `{P}.{W}.notificaciones_habilitadas`
+                WHERE client_id = @cid
+                """,
+                cp,
+            )
+            for r in rows_hab:
+                out[str(r["notificacion_codigo"])] = {
+                    "whatsapp": bool(r.get("whatsapp_habilitado", False)),
+                    "email": bool(r.get("email_habilitado", False)),
+                }
+        except Exception as exc:
+            logger.debug(f"No se pudo leer notificaciones_habilitadas para cliente {client_id}: {exc}")
+        return out
 
-    plantillas_map: Dict[str, Dict[str, Dict[str, str]]] = {}
-    ultima_plantilla: Optional[Dict[str, str]] = None
-    try:
-        rows_tpl = _bq_rows(
-            f"""
-            SELECT notificacion_codigo, canal, asunto, mensaje, IFNULL(es_html, FALSE) AS es_html, fecha_actualizacion, fecha_creacion
-            FROM `{P}.{W}.plantillas_notificaciones`
-            WHERE client_id = @cid
-            ORDER BY COALESCE(fecha_actualizacion, fecha_creacion) DESC
-            """,
-            cp,
-        )
-        for r in rows_tpl:
-            cod = str(r["notificacion_codigo"])
-            canal = str(r["canal"]).lower()
-            asunto_val = str(r.get("asunto") or "")
-            mensaje_val = str(r.get("mensaje") or "")
-            es_html_val = bool(r.get("es_html", False))
-            plantillas_map.setdefault(cod, {})[canal] = {
-                "asunto": asunto_val,
-                "mensaje": mensaje_val,
-                "es_html": es_html_val,
-            }
-            if ultima_plantilla is None and mensaje_val:
-                ultima_plantilla = {
-                    "notificacion_codigo": cod,
-                    "canal": canal,
+    def _fetch_plantillas() -> tuple[Dict[str, Dict[str, Dict[str, Any]]], Optional[Dict[str, Any]]]:
+        p_map: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        ult: Optional[Dict[str, Any]] = None
+        try:
+            try:
+                rows_tpl = _bq_rows(
+                    f"""
+                    SELECT notificacion_codigo, canal, asunto, mensaje, IFNULL(es_html, FALSE) AS es_html,
+                           IFNULL(config_json, '') AS config_json, fecha_actualizacion, fecha_creacion
+                    FROM `{P}.{W}.plantillas_notificaciones`
+                    WHERE client_id = @cid
+                    ORDER BY COALESCE(fecha_actualizacion, fecha_creacion) DESC
+                    """,
+                    cp,
+                )
+            except Exception:
+                rows_tpl = _bq_rows(
+                    f"""
+                    SELECT notificacion_codigo, canal, asunto, mensaje, IFNULL(es_html, FALSE) AS es_html,
+                           '' AS config_json, fecha_actualizacion, fecha_creacion
+                    FROM `{P}.{W}.plantillas_notificaciones`
+                    WHERE client_id = @cid
+                    ORDER BY COALESCE(fecha_actualizacion, fecha_creacion) DESC
+                    """,
+                    cp,
+                )
+            for r in rows_tpl:
+                cod = str(r["notificacion_codigo"])
+                canal = str(r["canal"]).lower()
+                asunto_val = str(r.get("asunto") or "")
+                mensaje_val = str(r.get("mensaje") or "")
+                es_html_val = bool(r.get("es_html", False))
+                config_json_val = str(r.get("config_json") or "")
+                p_map.setdefault(cod, {})[canal] = {
                     "asunto": asunto_val,
                     "mensaje": mensaje_val,
                     "es_html": es_html_val,
+                    "config_json": config_json_val,
                 }
-    except Exception as exc:
-        logger.debug(f"No se pudo leer plantillas_notificaciones para cliente {client_id}: {exc}")
+                if ult is None and mensaje_val:
+                    ult = {
+                        "notificacion_codigo": cod,
+                        "canal": canal,
+                        "asunto": asunto_val,
+                        "mensaje": mensaje_val,
+                        "es_html": es_html_val,
+                        "config_json": config_json_val,
+                    }
+        except Exception as exc:
+            logger.debug(f"No se pudo leer plantillas_notificaciones para cliente {client_id}: {exc}")
+        return p_map, ult
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        f_leg = pool.submit(_fetch_legacy)
+        f_hab = pool.submit(_fetch_habilitadas)
+        f_tpl = pool.submit(_fetch_plantillas)
+        legacy_flags = f_leg.result()
+        habilitadas_map = f_hab.result()
+        plantillas_map, ultima_plantilla = f_tpl.result()
+
+    from app.services.email_template_designer_service import (
+        DEFAULT_PRESET_TEXTS,
+        get_allowed_variables_for_notification,
+    )
 
     items: List[Dict[str, Any]] = []
     for base in NOTIFICACIONES_CATALOGO:
@@ -300,6 +340,15 @@ def get_cliente_notificaciones_y_plantillas(
         tpl_wa = plantillas_map.get(cod, {}).get("whatsapp", {})
         tpl_em = plantillas_map.get(cod, {}).get("email", {})
 
+        import json as _json
+        cfg_parsed: Dict[str, Any] = {}
+        if tpl_em.get("config_json"):
+            try:
+                cfg_parsed = _json.loads(str(tpl_em["config_json"]))
+            except Exception:
+                cfg_parsed = {}
+
+        preset_defaults = DEFAULT_PRESET_TEXTS.get(cod, DEFAULT_PRESET_TEXTS["envio_poliza"])
         items.append({
             "codigo": cod,
             "orden": base["orden"],
@@ -322,6 +371,10 @@ def get_cliente_notificaciones_y_plantillas(
                 tpl_em.get("mensaje") if base["editable"] and tpl_em.get("mensaje") else base["default_mensaje_email"]
             ),
             "email_es_html": bool(tpl_em.get("es_html", False)),
+            "email_config": cfg_parsed,
+            "preset_defaults": preset_defaults,
+            "variables_permitidas_email": get_allowed_variables_for_notification(cod, canal="email"),
+            "variables_permitidas_whatsapp": get_allowed_variables_for_notification(cod, canal="whatsapp"),
             "whatsapp_personalizado": bool(base["editable"] and tpl_wa.get("mensaje")),
             "email_personalizado": bool(base["editable"] and (tpl_em.get("mensaje") or tpl_em.get("asunto"))),
         })
@@ -330,6 +383,7 @@ def get_cliente_notificaciones_y_plantillas(
         "notificaciones": items,
         "variables": PLANTILLA_VARIABLES,
         "ultima_plantilla": ultima_plantilla,
+        "legacy_flags": legacy_flags,
     }
 
 
@@ -433,8 +487,15 @@ def save_cliente_plantilla(
     asunto: Optional[str],
     mensaje: str,
     es_html: bool = False,
+    config_json: Optional[str] = None,
 ) -> None:
     """Guarda o actualiza la plantilla personalizada de un cliente en plantillas_notificaciones."""
+    import json as _json
+    from app.services.email_template_designer_service import (
+        normalize_variable_brackets_to_single,
+        validate_template_variables_whitelist,
+    )
+
     meta = CATALOGO_POR_CODIGO.get(notificacion_codigo)
     if not meta:
         raise ValueError("Código de notificación no válido.")
@@ -445,13 +506,33 @@ def save_cliente_plantilla(
     if canal_norm not in ("whatsapp", "email"):
         raise ValueError("Canal no válido. Debe ser 'whatsapp' o 'email'.")
 
-    msg_clean = str(mensaje or "").strip()
-    if not msg_clean:
+    msg_raw = str(mensaje or "").strip()
+    if not msg_raw:
         raise ValueError("El mensaje de la plantilla no puede estar vacío.")
 
-    asunto_clean = str(asunto or "").strip() if canal_norm == "email" else ""
-    if canal_norm == "email" and not asunto_clean:
-        asunto_clean = meta["default_asunto_email"]
+    asunto_raw = str(asunto or "").strip() if canal_norm == "email" else ""
+    if canal_norm == "email" and not asunto_raw:
+        asunto_raw = meta["default_asunto_email"]
+
+    # Validación estricta de lista blanca de variables con expresiones regulares
+    validate_template_variables_whitelist(
+        msg_raw,
+        notificacion_codigo=notificacion_codigo,
+        canal=canal_norm,
+        is_subject=False,
+    )
+    if canal_norm == "email" and asunto_raw:
+        validate_template_variables_whitelist(
+            asunto_raw,
+            notificacion_codigo=notificacion_codigo,
+            canal="email",
+            is_subject=True,
+        )
+
+    # Normalizar {{variable}} -> {variable} al persistir para compatibilidad 100% con los despachadores existentes
+    # o mantener ambos soportados. En el config_json se preserva el estado del diseñador con {{variable}}.
+    msg_clean = normalize_variable_brackets_to_single(msg_raw)
+    asunto_clean = normalize_variable_brackets_to_single(asunto_raw)
 
     if notificacion_codigo != "regularizaciones" and (
         "{regularizaciones_faltantes}" in msg_clean or "{regularizaciones_faltantes}" in asunto_clean
@@ -466,6 +547,14 @@ def save_cliente_plantilla(
     P = BIGQUERY_PROJECT_ID
     W = WESBYTES_DATASET_ID
     es_html_val = bool(es_html) if canal_norm == "email" else False
+    cfg_str = ""
+    if isinstance(config_json, dict):
+        cfg_str = _json.dumps(config_json, ensure_ascii=False)
+    elif isinstance(config_json, str):
+        cfg_str = config_json.strip()
+
+    from app.database import ensure_columns_exist
+    ensure_columns_exist(W, "plantillas_notificaciones", {"es_html": "BOOL", "config_json": "STRING"})
 
     _bq_exec(
         f"""
@@ -481,14 +570,15 @@ def save_cliente_plantilla(
                 asunto = @asunto,
                 mensaje = @mensaje,
                 es_html = @es_html,
+                config_json = @config_json,
                 fecha_actualizacion = CURRENT_TIMESTAMP()
         WHEN NOT MATCHED THEN
             INSERT (
-                client_id, notificacion_codigo, canal, asunto, mensaje, es_html,
+                client_id, notificacion_codigo, canal, asunto, mensaje, es_html, config_json,
                 fecha_creacion, fecha_actualizacion
             )
             VALUES (
-                @cid, @cod, @canal, @asunto, @mensaje, @es_html,
+                @cid, @cod, @canal, @asunto, @mensaje, @es_html, @config_json,
                 CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()
             )
         """,
@@ -499,5 +589,6 @@ def save_cliente_plantilla(
             bigquery.ScalarQueryParameter("asunto", "STRING", asunto_clean),
             bigquery.ScalarQueryParameter("mensaje", "STRING", msg_clean),
             bigquery.ScalarQueryParameter("es_html", "BOOL", es_html_val),
+            bigquery.ScalarQueryParameter("config_json", "STRING", cfg_str),
         ],
     )

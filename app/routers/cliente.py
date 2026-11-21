@@ -1,10 +1,14 @@
+import asyncio
 import datetime
 import json
 import logging
 import re
 import secrets
 import string
+import threading
+import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -26,12 +30,14 @@ from app.config import (
     PLANES_OFICIALES,
     SECRET_KEY,
     SOPORTE_EMAIL,
+    TARIFAS_CALCULADORA,
     WESBYTE_APP_URL,
     WESBYTES_DATASET_ID,
 )
 from app.database import append_rows, execute_query, get_bq_client, get_next_id, hash_password, verify_password
 from app.services.email_service import EmailService, EmailServiceError
 from app.services.google_drive_service import GoogleDriveService, GoogleDriveServiceError, normalize_drive_logo_url
+from app.routers.media import prime_media_cache
 from app.services.onboarding_service import registrar_intento_pago_payphone
 from app.services.payphone_service import build_payphone_box_config, generate_client_tx_id
 from app.services.notificaciones_config_service import (
@@ -53,6 +59,32 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent
 COOKIE_NAME = "wb_cliente"
 P = BIGQUERY_PROJECT_ID
 W = WESBYTES_DATASET_ID
+
+_CACHE_LOCK = threading.Lock()
+_DASHBOARD_CACHE: Dict[int, tuple[float, Dict[str, Any]]] = {}
+_DATASET_STATS_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
+_PLANES_MAP_CACHE: Optional[tuple[float, Dict[int, Dict[str, Any]]]] = None
+
+_DASHBOARD_TTL_SEC = 60.0
+_DATASET_STATS_TTL_SEC = 300.0
+_PLANES_TTL_SEC = 600.0
+
+_AUDIT_LOCK = threading.Lock()
+_LAST_AUDIT_TS: float = 0.0
+_AUDIT_INTERVAL_SEC = 21600.0  # 6 horas
+
+
+def invalidate_cliente_cache(cliente_id: int) -> None:
+    """Invalida el caché en memoria del dashboard de un cliente tras cualquier escritura."""
+    with _CACHE_LOCK:
+        _DASHBOARD_CACHE.pop(int(cliente_id), None)
+
+
+def invalidate_planes_cache() -> None:
+    """Invalida el caché en memoria del catálogo de planes."""
+    global _PLANES_MAP_CACHE
+    with _CACHE_LOCK:
+        _PLANES_MAP_CACHE = None
 
 
 def get_sesion(request: Request) -> Optional[Dict[str, Any]]:
@@ -234,33 +266,38 @@ async def api_ingresar(payload: Dict[str, Any] = Body(...)):
         return resp
 
     # 2. Clientes administradores de los tenants (buscando primero en usuarios_app)
-    candidatos = _rows(
-        f"""
-        SELECT ua.id, ua.cliente_id, ua.username, ua.nombre_completo AS nombre, ua.email,
-               ua.password_hash, ua.permiso AS rol,
-               IFNULL(ua.debe_cambiar_password, FALSE) AS debe_cambiar_password,
-               c.estado, c.nombre AS empresa, c.dataset_id
-        FROM `{P}.{W}.usuarios_app` ua
-        JOIN `{P}.{W}.clientes` c ON c.id = ua.cliente_id
-        WHERE ua.activo = TRUE
-          AND (LOWER(ua.email) = LOWER(@l) OR LOWER(ua.username) = LOWER(@l))
-        """,
-        [bigquery.ScalarQueryParameter("l", "STRING", login)],
-    )
-
-    if not candidatos:
-        candidatos = _rows(
+    def _lookup_login_candidates() -> List[Dict[str, Any]]:
+        cands = _rows(
             f"""
-            SELECT u.id, u.cliente_id, u.username, u.nombre, u.email, u.password_hash, u.rol,
-                   IFNULL(u.debe_cambiar_password, FALSE) AS debe_cambiar_password,
-                   c.estado, c.nombre AS empresa, c.dataset_id
-            FROM `{P}.{W}.usuarios` u
-            JOIN `{P}.{W}.clientes` c ON c.id = u.cliente_id
-            WHERE u.activo = TRUE
-              AND (LOWER(u.email) = LOWER(@l) OR LOWER(u.username) = LOWER(@l))
+            SELECT ua.id, ua.cliente_id, ua.username, ua.nombre_completo AS nombre, ua.email,
+                   ua.password_hash, ua.permiso AS rol,
+                   IFNULL(ua.debe_cambiar_password, FALSE) AS debe_cambiar_password,
+                   c.estado, c.nombre AS empresa, c.dataset_id,
+                   c.plan_id, IFNULL(c.es_demo, FALSE) AS es_demo, c.fecha_fin_demo, c.created_at AS cli_created_at
+            FROM `{P}.{W}.usuarios_app` ua
+            JOIN `{P}.{W}.clientes` c ON c.id = ua.cliente_id
+            WHERE ua.activo = TRUE
+              AND (LOWER(ua.email) = LOWER(@l) OR LOWER(ua.username) = LOWER(@l))
             """,
             [bigquery.ScalarQueryParameter("l", "STRING", login)],
         )
+        if not cands:
+            cands = _rows(
+                f"""
+                SELECT u.id, u.cliente_id, u.username, u.nombre, u.email, u.password_hash, u.rol,
+                       IFNULL(u.debe_cambiar_password, FALSE) AS debe_cambiar_password,
+                       c.estado, c.nombre AS empresa, c.dataset_id,
+                       c.plan_id, IFNULL(c.es_demo, FALSE) AS es_demo, c.fecha_fin_demo, c.created_at AS cli_created_at
+                FROM `{P}.{W}.usuarios` u
+                JOIN `{P}.{W}.clientes` c ON c.id = u.cliente_id
+                WHERE u.activo = TRUE
+                  AND (LOWER(u.email) = LOWER(@l) OR LOWER(u.username) = LOWER(@l))
+                """,
+                [bigquery.ScalarQueryParameter("l", "STRING", login)],
+            )
+        return cands
+
+    candidatos = await asyncio.to_thread(_lookup_login_candidates)
 
     validos = [c for c in candidatos if verify_password(password, str(c.get("password_hash") or ""))]
     if not validos:
@@ -280,7 +317,7 @@ async def api_ingresar(payload: Dict[str, Any] = Body(...)):
                 status_code=403,
                 detail="Tu cuenta aún tiene pendiente el pago del plan. Solicita al administrador de tu empresa completar el pago.",
             )
-    elif u.get("estado") != "activo":
+    elif u.get("estado") not in ("activo", "demo"):
         raise HTTPException(
             status_code=403,
             detail="Tu cuenta aún no tiene un pago confirmado. Completa el pago para activar tu portal.",
@@ -322,6 +359,32 @@ async def api_ingresar(payload: Dict[str, Any] = Body(...)):
             detail=f"Acceso restringido: Este portal administrativo es exclusivo para el titular o administrador de la empresa. Para utilizar la plataforma operativa, por favor ingresa en {WESBYTE_APP_URL}",
         )
 
+    # Verificar si es cuenta Demo expirada para enviarla directo a pagar (sin queries extra si no es demo)
+    redirect_target = "/mi-portal"
+    demo_expirada_login = False
+    if bool(u.get("es_demo")) or str(u.get("estado") or "").lower() == "demo":
+        try:
+            cid_chk = int(u["cliente_id"])
+            sus_chk = await asyncio.to_thread(
+                lambda: (_rows(
+                    f"SELECT estado, fecha_fin FROM `{P}.{W}.suscripciones` WHERE cliente_id=@cid ORDER BY id DESC LIMIT 1",
+                    [bigquery.ScalarQueryParameter("cid", "INT64", cid_chk)],
+                ) or [None])[0]
+            )
+            cli_chk = {
+                "estado": u.get("estado"),
+                "es_demo": u.get("es_demo"),
+                "fecha_fin_demo": u.get("fecha_fin_demo"),
+                "created_at": u.get("cli_created_at"),
+                "plan_id": u.get("plan_id"),
+            }
+            demo_st = _compute_demo_status(cli_chk, None, sus_chk)
+            if demo_st["es_demo"] and demo_st["demo_expirada"]:
+                demo_expirada_login = True
+                redirect_target = "/mi-portal?demo_expirada=1"
+        except Exception:
+            pass
+
     # Nota: No se incrementa login_count ni ultimo_login en el portal administrativo,
     # ya que estas métricas registran exclusivamente el uso del aplicativo operativo web.
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -331,7 +394,11 @@ async def api_ingresar(payload: Dict[str, Any] = Body(...)):
          "rol": "admin", "nombre": u["nombre"], "empresa": u["empresa"], "exp": exp},
         SECRET_KEY, algorithm=ALGORITHM,
     )
-    resp = JSONResponse({"success": True, "redirect_url": "/mi-portal"})
+    resp = JSONResponse({
+        "success": True,
+        "demo_expirada": demo_expirada_login,
+        "redirect_url": redirect_target,
+    })
     resp.set_cookie(COOKIE_NAME, token, httponly=True, samesite="lax",
                     max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60)
     return resp
@@ -549,49 +616,108 @@ async def api_olvide_password(payload: Dict[str, Any] = Body(...)):
     }
 
 
+def _get_planes_map_cached() -> Dict[int, Dict[str, Any]]:
+    """Retorna el catálogo de planes indexado por ID con caché TTL de 10 minutos."""
+    global _PLANES_MAP_CACHE
+    now = time.time()
+    with _CACHE_LOCK:
+        if _PLANES_MAP_CACHE and (now - _PLANES_MAP_CACHE[0]) < _PLANES_TTL_SEC:
+            return _PLANES_MAP_CACHE[1]
+    rows = _rows(f"SELECT * FROM `{P}.{W}.planes`")
+    pmap = {int(r["id"]): r for r in rows if r.get("id") is not None}
+    with _CACHE_LOCK:
+        _PLANES_MAP_CACHE = (now, pmap)
+    return pmap
+
+
+def _get_dataset_stats_cached(ds: str) -> tuple[int, Dict[str, int], int]:
+    """Obtiene conteo de filas y tamaño en bytes del dataset del cliente en paralelo, con caché TTL de 5 minutos."""
+    if not ds:
+        return 0, {}, 0
+    now = time.time()
+    with _CACHE_LOCK:
+        cached = _DATASET_STATS_CACHE.get(ds)
+        if cached and (now - cached[0]) < _DATASET_STATS_TTL_SEC:
+            st = cached[1]
+            return st["total_clientes"], dict(st["registros"]), st["ds_bytes"]
+
+    table_names = (
+        "maestra_clientes",
+        "registros_medicos",
+        "registros_vehiculares",
+        "registros_vida_e_inversion",
+        "registros_ramos_generales",
+    )
+    client = get_bq_client()
+
+    def _inspect_table(name: str) -> tuple[str, int, int]:
+        try:
+            tbl = client.get_table(f"{P}.{ds}.{name}")
+            return name, int(tbl.num_rows or 0), int(tbl.num_bytes or 0)
+        except Exception:
+            return name, 0, 0
+
+    registros: Dict[str, int] = {}
+    total_clientes = 0
+    ds_bytes = 0
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        for name, n_rows, n_bytes in pool.map(_inspect_table, table_names):
+            ds_bytes += n_bytes
+            if name == "maestra_clientes":
+                total_clientes = n_rows
+            else:
+                registros[name] = n_rows
+
+    with _CACHE_LOCK:
+        _DATASET_STATS_CACHE[ds] = (
+            now,
+            {"total_clientes": total_clientes, "registros": dict(registros), "ds_bytes": ds_bytes},
+        )
+    return total_clientes, registros, ds_bytes
+
+
 def _superadmin_dashboard() -> Dict[str, Any]:
-    """Recopila la información global de TODOS los clientes, consumos, usuarios, logs y tamaños de BD."""
+    """Recopila la información global de TODOS los clientes, consumos, usuarios, logs y tamaños de BD en paralelo."""
     client = get_bq_client()
     periodo = datetime.date.today().strftime("%Y-%m")
 
-    # 1. Todos los clientes con sus planes y suscripciones
-    clientes_raw = _rows(f"""
-        SELECT 
-            c.id, c.nombre, c.email, c.celular, c.dataset_id, c.estado, c.created_at,
-            c.max_usuarios, c.limite_mensual_whatsapp, c.limite_mensual_emails, c.limite_mensual_api_ecuador,
-            IFNULL(p.nombre, 'Sin Plan') AS plan_nombre,
-            s.modalidad_pago, s.monto_total_cobrado, s.fecha_inicio, s.fecha_fin, s.estado AS sus_estado
-        FROM `{P}.{W}.clientes` c
-        LEFT JOIN `{P}.{W}.planes` p ON c.plan_id = p.id
-        LEFT JOIN `{P}.{W}.suscripciones` s ON c.id = s.cliente_id
-        ORDER BY c.id DESC
-    """)
-
-    # 2. Consumos mensuales por cliente
-    consumos_raw = _rows(f"""
-        SELECT cliente_id, total_emails, total_whatsapp, total_api_ecuador,
-               bloqueado_mensual_email, bloqueado_mensual_whatsapp, bloqueado_mensual_api
-        FROM `{P}.{W}.consumos_mensuales`
-        WHERE periodo = '{periodo}'
-    """)
-    consumos_map = {r["cliente_id"]: r for r in consumos_raw}
-
-    # 3. Todos los usuarios con conteo de logins y último acceso (desde usuarios_app)
-    try:
-        usuarios_raw = _rows(f"""
-            SELECT u.id, u.cliente_id, u.username, u.nombre_completo AS nombre, u.email, u.permiso AS rol,
-                   u.permisos_seguros, IFNULL(u.permisos_paneles, '') AS permisos_paneles, u.activo, u.ultimo_login,
-                   IFNULL(u.login_count, 0) AS login_count,
-                   IFNULL(c.nombre, 'Wesbyte Global') AS empresa
-            FROM `{P}.{W}.usuarios_app` u
-            LEFT JOIN `{P}.{W}.clientes` c ON u.cliente_id = c.id
-            ORDER BY u.ultimo_login DESC NULLS LAST
+    def _q_clientes():
+        return _rows(f"""
+            SELECT 
+                c.id, c.nombre, c.email, c.celular, c.dataset_id, c.estado, c.created_at,
+                c.max_usuarios, c.limite_mensual_whatsapp, c.limite_mensual_emails, c.limite_mensual_api_ecuador,
+                IFNULL(p.nombre, 'Sin Plan') AS plan_nombre,
+                s.modalidad_pago, s.monto_total_cobrado, s.fecha_inicio, s.fecha_fin, s.estado AS sus_estado
+            FROM `{P}.{W}.clientes` c
+            LEFT JOIN `{P}.{W}.planes` p ON c.plan_id = p.id
+            LEFT JOIN `{P}.{W}.suscripciones` s ON c.id = s.cliente_id
+            ORDER BY c.id DESC
         """)
-    except Exception:
-        usuarios_raw = []
 
-    if not usuarios_raw:
-        usuarios_raw = _rows(f"""
+    def _q_consumos():
+        return _rows(f"""
+            SELECT cliente_id, total_emails, total_whatsapp, total_api_ecuador,
+                   bloqueado_mensual_email, bloqueado_mensual_whatsapp, bloqueado_mensual_api
+            FROM `{P}.{W}.consumos_mensuales`
+            WHERE periodo = '{periodo}'
+        """)
+
+    def _q_usuarios():
+        try:
+            u_raw = _rows(f"""
+                SELECT u.id, u.cliente_id, u.username, u.nombre_completo AS nombre, u.email, u.permiso AS rol,
+                       u.permisos_seguros, IFNULL(u.permisos_paneles, '') AS permisos_paneles, u.activo, u.ultimo_login,
+                       IFNULL(u.login_count, 0) AS login_count,
+                       IFNULL(c.nombre, 'Wesbyte Global') AS empresa
+                FROM `{P}.{W}.usuarios_app` u
+                LEFT JOIN `{P}.{W}.clientes` c ON u.cliente_id = c.id
+                ORDER BY u.ultimo_login DESC NULLS LAST
+            """)
+            if u_raw:
+                return u_raw
+        except Exception:
+            pass
+        return _rows(f"""
             SELECT u.id, u.cliente_id, u.username, u.nombre, u.email, u.rol, u.activo, u.ultimo_login,
                    IFNULL(u.login_count, 0) AS login_count,
                    IFNULL(c.nombre, 'Wesbyte Global') AS empresa
@@ -600,24 +726,93 @@ def _superadmin_dashboard() -> Dict[str, Any]:
             ORDER BY u.ultimo_login DESC NULLS LAST
         """)
 
-    # 4. Cálculo de GB y tablas por cada dataset de cliente
-    datasets_info = []
-    total_bytes_global = 0
-    all_datasets = {d.dataset_id: d for d in client.list_datasets()}
+    def _q_logs_wa():
+        return _rows(f"""
+            SELECT l.cliente_id, c.nombre AS empresa, l.telefono_destino, l.estado, l.error_detalle, l.fecha_envio AS created_at
+            FROM `{P}.{W}.logs_whatsapp` l
+            LEFT JOIN `{P}.{W}.clientes` c ON l.cliente_id = c.id
+            ORDER BY l.fecha_envio DESC
+            LIMIT 20
+        """)
 
-    for c in clientes_raw:
-        ds_id = c.get("dataset_id")
-        ds_bytes = 0
-        ds_tables_count = 0
-        if ds_id and ds_id in all_datasets:
-            try:
-                for t in client.list_tables(ds_id):
-                    tbl = client.get_table(f"{P}.{ds_id}.{t.table_id}")
-                    if tbl.num_bytes:
-                        ds_bytes += tbl.num_bytes
-                    ds_tables_count += 1
-            except Exception:
-                pass
+    def _q_logs_em():
+        return _rows(f"""
+            SELECT l.cliente_id, c.nombre AS empresa, l.destinatario, l.motivo, l.estado, l.error_detalle, l.created_at
+            FROM `{P}.{W}.logs_emails` l
+            LEFT JOIN `{P}.{W}.clientes` c ON l.cliente_id = c.id
+            ORDER BY l.created_at DESC
+            LIMIT 20
+        """)
+
+    def _q_logs_api():
+        return _rows(f"""
+            SELECT l.cliente_id, c.nombre AS empresa, l.endpoint, l.metodo, l.status_code, l.tiempo_respuesta_ms, l.bloqueado_por_limite, l.created_at
+            FROM `{P}.{W}.logs_api_ecuador` l
+            LEFT JOIN `{P}.{W}.clientes` c ON l.cliente_id = c.id
+            ORDER BY l.created_at DESC
+            LIMIT 20
+        """)
+
+    def _q_planes():
+        try:
+            return _rows(f"""
+                SELECT id, codigo, nombre, subtitulo, tipo_periodo, max_usuarios,
+                       limite_mensual_emails, limite_mensual_whatsapp, limite_mensual_api_ecuador,
+                       CAST(IFNULL(precio_mensual, 0) AS FLOAT64) AS precio_mensual,
+                       CAST(IFNULL(precio_anual, 0) AS FLOAT64) AS precio_anual,
+                       CAST(IFNULL(descuento_anual_pct, 0) AS FLOAT64) AS descuento_anual_pct,
+                       CAST(IFNULL(precio_anual_con_descuento, 0) AS FLOAT64) AS precio_anual_con_descuento,
+                       es_destacado, es_personalizado, activo
+                FROM `{P}.{W}.planes`
+                ORDER BY id ASC
+            """)
+        except Exception:
+            return []
+
+    def _q_datasets():
+        return {d.dataset_id: d for d in client.list_datasets()}
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        f_cli = pool.submit(_q_clientes)
+        f_con = pool.submit(_q_consumos)
+        f_usr = pool.submit(_q_usuarios)
+        f_wa = pool.submit(_q_logs_wa)
+        f_em = pool.submit(_q_logs_em)
+        f_api = pool.submit(_q_logs_api)
+        f_pl = pool.submit(_q_planes)
+        f_ds = pool.submit(_q_datasets)
+
+        clientes_raw = f_cli.result()
+        consumos_raw = f_con.result()
+        usuarios_raw = f_usr.result()
+        logs_wa = f_wa.result()
+        logs_em = f_em.result()
+        logs_api = f_api.result()
+        planes_raw = f_pl.result()
+        all_datasets = f_ds.result()
+
+    consumos_map = {r["cliente_id"]: r for r in consumos_raw}
+
+    def _calc_ds_size(ds_id: Optional[str]) -> tuple[int, int]:
+        if not ds_id or ds_id not in all_datasets:
+            return 0, 0
+        ds_b = 0
+        cnt = 0
+        try:
+            for t in client.list_tables(ds_id):
+                tbl = client.get_table(f"{P}.{ds_id}.{t.table_id}")
+                if tbl.num_bytes:
+                    ds_b += tbl.num_bytes
+                cnt += 1
+        except Exception:
+            pass
+        return ds_b, cnt
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        ds_sizes = list(pool.map(_calc_ds_size, [c.get("dataset_id") for c in clientes_raw]))
+
+    total_bytes_global = 0
+    for c, (ds_bytes, ds_tables_count) in zip(clientes_raw, ds_sizes):
         total_bytes_global += ds_bytes
         c["bytes"] = ds_bytes
         c["gb"] = round(ds_bytes / (1024**3), 4)
@@ -627,50 +822,11 @@ def _superadmin_dashboard() -> Dict[str, Any]:
             "total_emails": 0, "total_whatsapp": 0, "total_api_ecuador": 0
         })
 
-    # 5. Logs recientes de WhatsApp, Emails y APIs
-    logs_wa = _rows(f"""
-        SELECT l.cliente_id, c.nombre AS empresa, l.telefono_destino, l.estado, l.error_detalle, l.fecha_envio AS created_at
-        FROM `{P}.{W}.logs_whatsapp` l
-        LEFT JOIN `{P}.{W}.clientes` c ON l.cliente_id = c.id
-        ORDER BY l.fecha_envio DESC
-        LIMIT 20
-    """)
-    logs_em = _rows(f"""
-        SELECT l.cliente_id, c.nombre AS empresa, l.destinatario, l.motivo, l.estado, l.error_detalle, l.created_at
-        FROM `{P}.{W}.logs_emails` l
-        LEFT JOIN `{P}.{W}.clientes` c ON l.cliente_id = c.id
-        ORDER BY l.created_at DESC
-        LIMIT 20
-    """)
-    logs_api = _rows(f"""
-        SELECT l.cliente_id, c.nombre AS empresa, l.endpoint, l.metodo, l.status_code, l.tiempo_respuesta_ms, l.bloqueado_por_limite, l.created_at
-        FROM `{P}.{W}.logs_api_ecuador` l
-        LEFT JOIN `{P}.{W}.clientes` c ON l.cliente_id = c.id
-        ORDER BY l.created_at DESC
-        LIMIT 20
-    """)
-
     # Totales globales
     total_wa = sum(r.get("total_whatsapp", 0) for r in consumos_raw)
     total_em = sum(r.get("total_emails", 0) for r in consumos_raw)
     total_api = sum(r.get("total_api_ecuador", 0) for r in consumos_raw)
     total_logins = sum(int(u.get("login_count", 0)) for u in usuarios_raw)
-
-    # 6. Todos los planes en wesbyte.administracion.planes
-    try:
-        planes_raw = _rows(f"""
-            SELECT id, codigo, nombre, subtitulo, tipo_periodo, max_usuarios,
-                   limite_mensual_emails, limite_mensual_whatsapp, limite_mensual_api_ecuador,
-                   CAST(IFNULL(precio_mensual, 0) AS FLOAT64) AS precio_mensual,
-                   CAST(IFNULL(precio_anual, 0) AS FLOAT64) AS precio_anual,
-                   CAST(IFNULL(descuento_anual_pct, 0) AS FLOAT64) AS descuento_anual_pct,
-                   CAST(IFNULL(precio_anual_con_descuento, 0) AS FLOAT64) AS precio_anual_con_descuento,
-                   es_destacado, es_personalizado, activo
-            FROM `{P}.{W}.planes`
-            ORDER BY id ASC
-        """)
-    except Exception:
-        planes_raw = []
 
     return {
         "is_superadmin": True,
@@ -768,41 +924,94 @@ def _assert_demo_not_expired_by_cid(cid: int) -> Dict[str, Any]:
 
 
 def _dashboard(cid: int) -> Optional[Dict[str, Any]]:
+    now = time.time()
+    with _CACHE_LOCK:
+        cached = _DASHBOARD_CACHE.get(int(cid))
+        if cached and (now - cached[0]) < _DASHBOARD_TTL_SEC:
+            return cached[1]
+
     cp = [bigquery.ScalarQueryParameter("cid", "INT64", cid)]
-    cli = _rows(f"SELECT * FROM `{P}.{W}.clientes` WHERE id=@cid LIMIT 1", cp)
-    if not cli:
-        return None
-    cliente = cli[0]
+    periodo = datetime.date.today().strftime("%Y-%m")
 
-    plan = (_rows(f"SELECT * FROM `{P}.{W}.planes` WHERE id=@plan",
-                  [bigquery.ScalarQueryParameter("plan", "INT64", int(cliente.get("plan_id") or 0))]) or [{}])[0]
-    sus = (_rows(f"SELECT * FROM `{P}.{W}.suscripciones` WHERE cliente_id=@cid ORDER BY id DESC LIMIT 1", cp) or [None])[0]
-    pagos = _rows(f"SELECT * FROM `{P}.{W}.pagos_payphone` WHERE cliente_id=@cid ORDER BY id DESC LIMIT 10", cp)
-    usuarios = _rows(f"SELECT email, username, nombre, rol, activo, ultimo_login, IFNULL(login_count, 0) AS login_count FROM `{P}.{W}.usuarios` WHERE cliente_id=@cid ORDER BY id", cp)
+    def _q_cliente():
+        return _rows(f"SELECT * FROM `{P}.{W}.clientes` WHERE id=@cid LIMIT 1", cp)
 
-    # Usuarios en usuarios_app (con roles de supervisor, actualizador, visualizador y permisos de seguros)
-    try:
-        usuarios_app_raw = _rows(f"""
-            SELECT id, cliente_id, username, nombre_completo, email, celular, permiso, dataset_id, activo,
-                   permisos_seguros, IFNULL(permisos_paneles, '') AS permisos_paneles,
-                   ultimo_login, IFNULL(login_count, 0) AS login_count, created_at
-            FROM `{P}.{W}.usuarios_app`
-            WHERE cliente_id=@cid
-            ORDER BY id ASC
-        """, cp)
-        seen_users = set()
-        usuarios_app = []
-        for u_row in usuarios_app_raw:
-            key = (u_row.get("email") or u_row.get("username") or "").strip().lower()
-            if key and key in seen_users:
-                continue
-            if key:
-                seen_users.add(key)
-            if not str(u_row.get("permisos_paneles") or "").strip():
-                u_row["permisos_paneles"] = _legacy_paneles_for_permiso(str(u_row.get("permiso") or ""))
-            usuarios_app.append(u_row)
-    except Exception:
-        usuarios_app = []
+    def _q_sus():
+        return (_rows(f"SELECT * FROM `{P}.{W}.suscripciones` WHERE cliente_id=@cid ORDER BY id DESC LIMIT 1", cp) or [None])[0]
+
+    def _q_pagos():
+        return _rows(f"SELECT * FROM `{P}.{W}.pagos_payphone` WHERE cliente_id=@cid ORDER BY id DESC LIMIT 10", cp)
+
+    def _q_usuarios():
+        return _rows(f"SELECT email, username, nombre, rol, activo, ultimo_login, IFNULL(login_count, 0) AS login_count FROM `{P}.{W}.usuarios` WHERE cliente_id=@cid ORDER BY id", cp)
+
+    def _q_usuarios_app():
+        try:
+            return _rows(f"""
+                SELECT id, cliente_id, username, nombre_completo, email, celular, permiso, dataset_id, activo,
+                       permisos_seguros, IFNULL(permisos_paneles, '') AS permisos_paneles,
+                       ultimo_login, IFNULL(login_count, 0) AS login_count, created_at
+                FROM `{P}.{W}.usuarios_app`
+                WHERE cliente_id=@cid
+                ORDER BY id ASC
+            """, cp)
+        except Exception:
+            return []
+
+    def _q_consumos():
+        return (_rows(
+            f"SELECT * FROM `{P}.{W}.consumos_mensuales` WHERE cliente_id=@cid AND periodo=@p ORDER BY id DESC LIMIT 1",
+            cp + [bigquery.ScalarQueryParameter("p", "STRING", periodo)],
+        ) or [{}])[0]
+
+    def _q_logs_wa():
+        return _rows(f"SELECT telefono_destino, estado, error_detalle, fecha_envio AS created_at FROM `{P}.{W}.logs_whatsapp` WHERE cliente_id=@cid ORDER BY fecha_envio DESC LIMIT 10", cp)
+
+    def _q_logs_em():
+        return _rows(f"SELECT destinatario, motivo, estado, error_detalle, created_at FROM `{P}.{W}.logs_emails` WHERE cliente_id=@cid ORDER BY created_at DESC LIMIT 10", cp)
+
+    def _q_logs_api():
+        return _rows(f"SELECT endpoint, metodo, status_code, tiempo_respuesta_ms, created_at FROM `{P}.{W}.logs_api_ecuador` WHERE cliente_id=@cid ORDER BY created_at DESC LIMIT 10", cp)
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        f_cli = pool.submit(_q_cliente)
+        f_planes = pool.submit(_get_planes_map_cached)
+        f_sus = pool.submit(_q_sus)
+        f_pagos = pool.submit(_q_pagos)
+        f_usuarios = pool.submit(_q_usuarios)
+        f_usuarios_app = pool.submit(_q_usuarios_app)
+        f_cons = pool.submit(_q_consumos)
+        f_logs_wa = pool.submit(_q_logs_wa)
+        f_logs_em = pool.submit(_q_logs_em)
+        f_logs_api = pool.submit(_q_logs_api)
+
+        cli = f_cli.result()
+        if not cli:
+            return None
+        cliente = cli[0]
+        planes_map = f_planes.result()
+        plan = planes_map.get(int(cliente.get("plan_id") or 0), {})
+        sus = f_sus.result()
+        pagos = f_pagos.result()
+        usuarios = f_usuarios.result()
+        usuarios_app_raw = f_usuarios_app.result()
+        cons = f_cons.result()
+        logs_wa = f_logs_wa.result()
+        logs_em = f_logs_em.result()
+        logs_api = f_logs_api.result()
+
+    # Procesar usuarios_app
+    seen_users = set()
+    usuarios_app = []
+    for u_row in usuarios_app_raw:
+        key = (u_row.get("email") or u_row.get("username") or "").strip().lower()
+        if key and key in seen_users:
+            continue
+        if key:
+            seen_users.add(key)
+        if not str(u_row.get("permisos_paneles") or "").strip():
+            u_row["permisos_paneles"] = _legacy_paneles_for_permiso(str(u_row.get("permiso") or ""))
+        usuarios_app.append(u_row)
 
     if not usuarios_app:
         usuarios_app = [
@@ -831,11 +1040,6 @@ def _dashboard(cid: int) -> Optional[Dict[str, Any]]:
     limite_alcanzado = (usuarios_activos_count >= max_usr)
     puede_crear_usuarios = (not es_plan_prime) and (not limite_alcanzado)
 
-    periodo = datetime.date.today().strftime("%Y-%m")
-    cons = (_rows(
-        f"SELECT * FROM `{P}.{W}.consumos_mensuales` WHERE cliente_id=@cid AND periodo=@p ORDER BY id DESC LIMIT 1",
-        cp + [bigquery.ScalarQueryParameter("p", "STRING", periodo)]) or [{}])[0]
-
     def uso(total_key: str, limite_key: str) -> Dict[str, Any]:
         usado = int(cons.get(total_key) or 0)
         limite = int(cliente.get(limite_key) or 0)
@@ -847,27 +1051,6 @@ def _dashboard(cid: int) -> Optional[Dict[str, Any]]:
         "emails": uso("total_emails", "limite_mensual_emails"),
         "api": uso("total_api_ecuador", "limite_mensual_api_ecuador"),
     }
-
-    # Datos cargados y tamaño en GB de su base de datos
-    registros: Dict[str, int] = {}
-    total_clientes = 0
-    ds_bytes = 0
-    ds = cliente.get("dataset_id")
-    if ds:
-        client = get_bq_client()
-        for name in ("maestra_clientes", "registros_medicos", "registros_vehiculares",
-                     "registros_vida_e_inversion", "registros_ramos_generales"):
-            try:
-                tbl = client.get_table(f"{P}.{ds}.{name}")
-                n = int(tbl.num_rows or 0)
-                if tbl.num_bytes:
-                    ds_bytes += tbl.num_bytes
-            except Exception:
-                n = 0
-            if name == "maestra_clientes":
-                total_clientes = n
-            else:
-                registros[name] = n
 
     dias_restantes = None
     if sus and sus.get("fecha_fin"):
@@ -882,12 +1065,35 @@ def _dashboard(cid: int) -> Optional[Dict[str, Any]]:
         if not plan:
             plan = DEMO_PLAN_CONFIG.copy()
 
-    # Logs del cliente
-    logs_wa = _rows(f"SELECT telefono_destino, estado, error_detalle, fecha_envio AS created_at FROM `{P}.{W}.logs_whatsapp` WHERE cliente_id=@cid ORDER BY fecha_envio DESC LIMIT 10", cp)
-    logs_em = _rows(f"SELECT destinatario, motivo, estado, error_detalle, created_at FROM `{P}.{W}.logs_emails` WHERE cliente_id=@cid ORDER BY created_at DESC LIMIT 10", cp)
-    logs_api = _rows(f"SELECT endpoint, metodo, status_code, tiempo_respuesta_ms, created_at FROM `{P}.{W}.logs_api_ecuador` WHERE cliente_id=@cid ORDER BY created_at DESC LIMIT 10", cp)
+    from app.services.email_template_designer_service import (
+        get_ai_quota_for_plan,
+        get_ai_usage_this_month,
+    )
+    ia_habilitada, ia_cuota_total = get_ai_quota_for_plan(
+        int(cliente.get("plan_id") or 0),
+        str(plan.get("codigo") or ""),
+        bool(demo_info["es_demo"]),
+    )
 
-    # Configuración de notificaciones del cliente (por client_id o fallback a su plan)
+    # Ejecutar en paralelo: stats del dataset, plantillas/notificaciones y uso IA
+    ds = cliente.get("dataset_id") or ""
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        f_stats = pool.submit(_get_dataset_stats_cached, ds)
+        f_notif = pool.submit(
+            get_cliente_notificaciones_y_plantillas,
+            cid,
+            str(cliente.get("plan_id") or ""),
+            str(plan.get("codigo") or ""),
+        )
+        f_ia = pool.submit(get_ai_usage_this_month, cid) if ia_habilitada else None
+
+        total_clientes, registros, ds_bytes = f_stats.result()
+        notif_detalle_data = f_notif.result()
+        ia_usadas_mes = f_ia.result() if f_ia else 0
+
+    ia_disponibles_mes = max(0, ia_cuota_total - ia_usadas_mes)
+
+    # Reutilizar legacy_flags de notif_detalle_data sin repetir query
     notif_cfg = {
         "correo_cumpleanios_activo": True,
         "correo_renovaciones_activo": True,
@@ -896,54 +1102,25 @@ def _dashboard(cid: int) -> Optional[Dict[str, Any]]:
         "whatsapp_renovaciones_activo": True,
         "whatsapp_cobros_activo": True,
     }
-    try:
-        rows_notif = _rows(
-            f"""
-            SELECT correo_cumpleanios_activo, correo_renovaciones_activo, correo_cobros_activo,
-                   whatsapp_cumpleanios_activo, whatsapp_renovaciones_activo, whatsapp_cobros_activo
-            FROM `{P}.{W}.configuracion_planes_notificaciones`
-            WHERE client_id = @cid
-            LIMIT 1
-            """,
-            cp,
-        )
-        if not rows_notif:
-            plan_id_str = str(cliente.get("plan_id") or "")
-            plan_cod = str(plan.get("codigo") or "")
-            rows_notif = _rows(
-                f"""
-                SELECT correo_cumpleanios_activo, correo_renovaciones_activo, correo_cobros_activo,
-                       whatsapp_cumpleanios_activo, whatsapp_renovaciones_activo, whatsapp_cobros_activo
-                FROM `{P}.{W}.configuracion_planes_notificaciones`
-                WHERE client_id IS NULL AND (id_plan = @pid OR id_plan = @pcod)
-                LIMIT 1
-                """,
-                [
-                    bigquery.ScalarQueryParameter("pid", "STRING", plan_id_str),
-                    bigquery.ScalarQueryParameter("pcod", "STRING", plan_cod),
-                ],
-            )
-        if rows_notif:
-            rn = rows_notif[0]
-            notif_cfg = {k: bool(rn.get(k, False)) for k in notif_cfg.keys()}
-    except Exception as exc:
-        logger.debug(f"No se pudo cargar configuracion_planes_notificaciones para cliente {cid}: {exc}")
+    legacy_flags = notif_detalle_data.get("legacy_flags") or {}
+    if legacy_flags:
+        notif_cfg = {k: bool(legacy_flags.get(k, notif_cfg[k])) for k in notif_cfg.keys()}
 
     cliente["logo"] = normalize_drive_logo_url(cliente.get("logo"))
 
-    notif_detalle_data = get_cliente_notificaciones_y_plantillas(
-        cid,
-        str(cliente.get("plan_id") or ""),
-        str(plan.get("codigo") or ""),
-    )
-
-    return {
+    result = {
         "is_superadmin": False,
         "cliente": cliente, "plan": plan, "sus": sus, "pagos": pagos, "usuarios": usuarios,
         "notificaciones_config": notif_cfg,
         "notificaciones_detalle": notif_detalle_data["notificaciones"],
         "plantilla_variables": notif_detalle_data["variables"],
         "ultima_plantilla": notif_detalle_data.get("ultima_plantilla"),
+        "ia_email_config": {
+            "habilitada": ia_habilitada,
+            "cuota_total": ia_cuota_total,
+            "usadas_mes": ia_usadas_mes,
+            "disponibles_mes": ia_disponibles_mes,
+        },
         "usuarios_app": usuarios_app,
         "usuarios_activos_count": usuarios_activos_count,
         "max_usuarios": max_usr,
@@ -966,14 +1143,24 @@ def _dashboard(cid: int) -> Optional[Dict[str, Any]]:
         "logs_api": logs_api,
         "planes_catalogo": PLANES_OFICIALES,
     }
+    with _CACHE_LOCK:
+        _DASHBOARD_CACHE[int(cid)] = (time.time(), result)
+    return result
 
 
 def auditar_vencimientos_suscripciones() -> None:
     """
-    Regla de negocio automática:
+    Regla de negocio automática (con throttling de 6 horas):
     Si un cliente tiene más de 60 días (2 meses) sin pagar respecto a su fecha de vencimiento:
     Se cancela automáticamente la suscripción y se desactiva al cliente.
     """
+    global _LAST_AUDIT_TS
+    now = time.time()
+    with _AUDIT_LOCK:
+        if (now - _LAST_AUDIT_TS) < _AUDIT_INTERVAL_SEC:
+            return
+        _LAST_AUDIT_TS = now
+
     try:
         client = get_bq_client()
         # 1. Cancelar suscripciones con más de 60 días (2 meses) de impago
@@ -1006,8 +1193,9 @@ def auditar_vencimientos_suscripciones() -> None:
 
 @router.get("/mi-portal", response_class=HTMLResponse)
 async def mi_portal(request: Request):
-    # Ejecutar auditoría de vencimientos (regla de 2 meses)
-    auditar_vencimientos_suscripciones()
+    # Ejecutar auditoría de vencimientos en segundo plano (sin bloquear el TTFB)
+    if (time.time() - _LAST_AUDIT_TS) >= _AUDIT_INTERVAL_SEC:
+        asyncio.create_task(asyncio.to_thread(auditar_vencimientos_suscripciones))
 
     sesion = get_sesion(request)
     if not sesion:
@@ -1019,7 +1207,7 @@ async def mi_portal(request: Request):
     is_sa = (sesion.get("rol") == "superadmin") or (sesion.get("sub") in ("admin", "wasm") and int(sesion.get("cid") or sesion.get("cliente_id") or 0) == 0)
     if is_sa:
         try:
-            data = _superadmin_dashboard()
+            data = await asyncio.to_thread(_superadmin_dashboard)
             return templates.TemplateResponse(
                 request=request, name="mi_portal.html",
                 context={"sesion": sesion, "d": data, "is_superadmin": True,
@@ -1036,17 +1224,21 @@ async def mi_portal(request: Request):
 
     try:
         cid = int(sesion.get("cid") or sesion.get("cliente_id") or 0)
-        data = _dashboard(cid)
+        data = await asyncio.to_thread(_dashboard, cid)
     except Exception:
         logger.exception("Error cargando dashboard")
         raise HTTPException(status_code=500, detail="No pudimos cargar tu portal. Intenta de nuevo.")
-    if not data or data["cliente"].get("estado") not in ("activo", "pendiente_pago"):
+    if not data or data["cliente"].get("estado") not in ("activo", "pendiente_pago", "demo"):
         return RedirectResponse("/salir", status_code=302)
-    pago_pendiente = (data["cliente"].get("estado") == "pendiente_pago")
+    demo_bloqueada = bool(data.get("es_demo") and data.get("demo_expirada"))
+    if demo_bloqueada or data["cliente"].get("estado") == "pendiente_pago":
+        return RedirectResponse(f"/checkout/{cid}", status_code=302)
+    pago_pendiente = (data["cliente"].get("estado") == "pendiente_pago") or demo_bloqueada
     return templates.TemplateResponse(
         request=request, name="mi_portal.html",
         context={"sesion": sesion, "d": data, "is_superadmin": False,
                  "pago_pendiente": pago_pendiente,
+                 "demo_bloqueada": demo_bloqueada,
                  "soporte_email": SOPORTE_EMAIL, "wesbyte_app_url": WESBYTE_APP_URL,
                  "app_version": APP_VERSION},
     )
@@ -1054,40 +1246,49 @@ async def mi_portal(request: Request):
 
 @router.post("/api/suscripcion/cancelar")
 async def api_cancelar_suscripcion(request: Request, payload: Dict[str, Any] = Body(...)):
-    """Permite al cliente cancelar voluntariamente su plan."""
+    """Los planes anuales/multianuales de pago único corren hasta su fecha de vencimiento sin cancelación anticipada."""
     sesion = get_sesion(request)
     if not sesion or not sesion.get("cid"):
         raise HTTPException(status_code=401, detail="No autorizado.")
+    raise HTTPException(
+        status_code=400,
+        detail="Tu suscripción es de pago único por el período contratado y no requiere ni admite cancelación anticipada. Tu servicio seguirá activo hasta la fecha de vencimiento.",
+    )
 
-    cid = int(sesion["cid"])
-    motivo = str(payload.get("motivo", "Cancelación solicitada por el usuario")).strip()
-    client = get_bq_client()
-    now_ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
-    try:
-        # Cancelar en suscripciones
-        client.query(f"""
-            UPDATE `{P}.{W}.suscripciones`
-            SET estado = 'cancelada',
-                renovacion_automatica = FALSE,
-                desea_renovar = FALSE,
-                motivo_no_renovacion = '{motivo.replace("'", "''")}',
-                updated_at = TIMESTAMP('{now_ts}')
-            WHERE cliente_id = {cid} AND estado IN ('activa', 'por_vencer', 'vencida')
-        """).result()
-
-        # Marcar cliente cancelado
-        client.query(f"""
-            UPDATE `{P}.{W}.clientes`
-            SET estado = 'cancelado',
-                activo = FALSE
-            WHERE id = {cid}
-        """).result()
-
-        return {"success": True, "message": "Tu suscripción ha sido cancelada correctamente."}
-    except Exception as exc:
-        logger.exception("Error cancelando suscripción")
-        raise HTTPException(status_code=500, detail=f"No se pudo procesar la cancelación: {str(exc)}")
+def _calcular_meses_prorrateo(f_ini: Optional[datetime.date], f_fin: Optional[datetime.date], today: datetime.date) -> Dict[str, int]:
+    """
+    Calcula meses totales del contrato, meses usados y meses no usados.
+    Regla: si ya pasó el primer día del mes de ciclo actual, ese mes se cobra completo
+    en el plan anterior y la diferencia se cobra por los meses no usados restantes.
+    """
+    if f_ini and f_fin and f_fin > f_ini:
+        meses_totales = max(1, (f_fin.year - f_ini.year) * 12 + (f_fin.month - f_ini.month))
+        if f_fin.day > f_ini.day and (f_fin.day - f_ini.day) >= 15:
+            meses_totales += 1
+        meses_transcurridos = max(0, (today.year - f_ini.year) * 12 + (today.month - f_ini.month))
+        # Si ya pasó el primer día del mes de servicio (today.day > f_ini.day), se cobra completo ese mes
+        if today >= f_ini:
+            meses_usados = meses_transcurridos + (1 if today.day > f_ini.day else 0)
+        else:
+            meses_usados = 0
+        meses_usados = max(0, min(meses_totales - 1, meses_usados))
+        meses_no_usados = max(1, meses_totales - meses_usados)
+        dias_totales = max(1, (f_fin - f_ini).days)
+        dias_restantes = max(1, min(dias_totales, (f_fin - today).days))
+    else:
+        meses_totales = 12
+        meses_usados = 0
+        meses_no_usados = 12
+        dias_totales = 365
+        dias_restantes = 365
+    return {
+        "meses_totales": meses_totales,
+        "meses_usados": meses_usados,
+        "meses_no_usados": meses_no_usados,
+        "dias_totales": dias_totales,
+        "dias_restantes": dias_restantes,
+    }
 
 
 def _calcular_upgrade_diferencia(
@@ -1095,9 +1296,11 @@ def _calcular_upgrade_diferencia(
     cli: Dict[str, Any],
     tipo: str,
     nuevo_plan_codigo: str = "",
-    usuarios_adicionales: int = 1,
+    usuarios_adicionales: int = 0,
+    emails_adicionales: int = 0,
+    whatsapp_adicionales: int = 0,
 ) -> Dict[str, Any]:
-    """Calcula el crédito no consumido del plan actual y la diferencia neta a pagar por upgrade."""
+    """Calcula el crédito por meses no usados del plan actual y la diferencia neta a pagar por upgrade o recursos."""
     cp = [bigquery.ScalarQueryParameter("cid", "INT64", cid)]
     sus_rows = _rows(
         f"""
@@ -1110,10 +1313,11 @@ def _calcular_upgrade_diferencia(
     )
     sus = sus_rows[0] if sus_rows else {}
 
-    plan_actual_id = int(cli.get("plan_id") or sus.get("plan_id") or 1)
-    plan_actual = next((p for p in PLANES_OFICIALES if p["id"] == plan_actual_id), PLANES_OFICIALES[0])
+    plan_actual_id = int(cli.get("plan_id") or sus.get("plan_id") or 0)
+    plan_actual = next((p for p in PLANES_OFICIALES if p["id"] == plan_actual_id), DEMO_PLAN_CONFIG)
+    es_demo_cli = bool(cli.get("es_demo")) or plan_actual_id == 0
 
-    today = datetime.date.today()
+    today = datetime.datetime.now(ECUADOR_TZ).date()
     f_ini = sus.get("fecha_inicio")
     f_fin = sus.get("fecha_fin")
     if isinstance(f_ini, datetime.datetime):
@@ -1121,29 +1325,45 @@ def _calcular_upgrade_diferencia(
     if isinstance(f_fin, datetime.datetime):
         f_fin = f_fin.date()
 
-    if f_ini and f_fin and f_fin > f_ini:
-        dias_totales = max(1, (f_fin - f_ini).days)
-        dias_restantes = max(1, min(dias_totales, (f_fin - today).days))
-    else:
-        dias_totales = 365
-        dias_restantes = 365
+    prorrateo = _calcular_meses_prorrateo(f_ini, f_fin, today)
+    meses_totales = prorrateo["meses_totales"]
+    meses_usados = prorrateo["meses_usados"]
+    meses_no_usados = prorrateo["meses_no_usados"]
+    dias_totales = prorrateo["dias_totales"]
+    dias_restantes = prorrateo["dias_restantes"]
 
-    monto_pagado_actual = float(sus.get("monto_total_cobrado") or plan_actual["precio_anual_con_descuento"])
-    credito_actual = round(monto_pagado_actual * (dias_restantes / dias_totales), 2)
+    nota_prorrateo = (
+        f"Si ya pasó el primer día del mes en curso, ese mes se cobra completo en tu plan actual "
+        f"({meses_usados} {'mes usado' if meses_usados == 1 else 'meses usados'}) y la diferencia se calcula "
+        f"sobre los {meses_no_usados} {'mes no usado' if meses_no_usados == 1 else 'meses no usados'} restantes."
+    )
+
+    monto_pagado_actual = 0.0 if es_demo_cli else float(sus.get("monto_total_cobrado") or plan_actual.get("precio_anual_con_descuento") or 0)
+    valor_mensual_actual = 0.0 if es_demo_cli else (monto_pagado_actual / meses_totales)
+    credito_actual = 0.0 if es_demo_cli else round(valor_mensual_actual * meses_no_usados, 2)
 
     if tipo == "cambio_plan":
         codigo = str(nuevo_plan_codigo or "").strip().upper()
         nuevo_plan = next((p for p in PLANES_OFICIALES if p["codigo"] == codigo), None)
         if not nuevo_plan:
             raise HTTPException(status_code=400, detail="Plan no válido.")
-        if nuevo_plan["id"] <= plan_actual_id:
+        if not es_demo_cli and nuevo_plan["id"] <= plan_actual_id:
             raise HTTPException(status_code=400, detail="Solo puedes subir a un plan superior al actual.")
 
-        # Valor proporcional del nuevo plan para los días restantes (base anual con descuento)
-        costo_nuevo_periodo = round(float(nuevo_plan["precio_anual_con_descuento"]) * (dias_restantes / 365.0), 2)
-        diferencia = round(costo_nuevo_periodo - credito_actual, 2)
-        if diferencia < 1.00:
-            diferencia = 1.00
+        if es_demo_cli:
+            costo_nuevo_periodo = round(float(nuevo_plan["precio_anual_con_descuento"]), 2)
+            diferencia = costo_nuevo_periodo
+            meses_no_usados = 12
+            meses_usados = 0
+            meses_totales = 12
+            dias_restantes = 365
+            nota_prorrateo = "Activación de plan anual completo (12 meses)."
+        else:
+            valor_mensual_nuevo = float(nuevo_plan["precio_anual_con_descuento"]) / 12.0
+            costo_nuevo_periodo = round(valor_mensual_nuevo * meses_no_usados, 2)
+            diferencia = round(costo_nuevo_periodo - credito_actual, 2)
+            if diferencia < 1.00:
+                diferencia = 1.00
 
         msi_meses = 6 if diferencia > 250 else 3
         return {
@@ -1153,6 +1373,9 @@ def _calcular_upgrade_diferencia(
             "plan_actual_nombre": plan_actual["nombre"],
             "nuevo_plan_codigo": nuevo_plan["codigo"],
             "nuevo_plan_nombre": nuevo_plan["nombre"],
+            "meses_totales": meses_totales,
+            "meses_usados": meses_usados,
+            "meses_no_usados": meses_no_usados,
             "dias_totales": dias_totales,
             "dias_restantes": dias_restantes,
             "monto_pagado_actual": round(monto_pagado_actual, 2),
@@ -1161,23 +1384,67 @@ def _calcular_upgrade_diferencia(
             "diferencia_usd": diferencia,
             "msi_meses": msi_meses,
             "cuota_msi": round(diferencia / msi_meses, 2),
-            "descripcion": f"Upgrade a {nuevo_plan['nombre']} ({dias_restantes} días restantes)",
+            "nota_prorrateo": nota_prorrateo,
+            "descripcion": f"Upgrade a {nuevo_plan['nombre']} ({meses_no_usados} meses restantes)",
         }
 
-    elif tipo == "agregar_usuarios":
-        adicionales = int(usuarios_adicionales or 1)
-        if adicionales < 1:
-            raise HTTPException(status_code=400, detail="Cantidad de usuarios inválida.")
-        costo_anual_unidad = round(6.00 * 12 * 0.90, 2)  # $64.80/año por usuario
-        costo_nuevo_periodo = round(adicionales * costo_anual_unidad * (dias_restantes / 365.0), 2)
+    elif tipo in ("agregar_usuarios", "agregar_recursos"):
+        u_extra = max(0, int(usuarios_adicionales or 0))
+        e_extra = max(0, int(emails_adicionales or 0))
+        w_extra = max(0, int(whatsapp_adicionales or 0))
+        if tipo == "agregar_usuarios" and u_extra == 0 and e_extra == 0 and w_extra == 0:
+            u_extra = 1
+        if u_extra == 0 and e_extra == 0 and w_extra == 0:
+            raise HTTPException(status_code=400, detail="Selecciona al menos un usuario, correo o mensaje de WhatsApp adicional.")
+
+        # Tarifa escalonada por volumen para proteger la escalera de planes y mejorar percepción en paquetes altos
+        if e_extra >= 5000:
+            tarifa_email = 0.004
+        elif e_extra >= 2500:
+            tarifa_email = 0.005
+        else:
+            tarifa_email = float(TARIFAS_CALCULADORA["costo_email_unitario"])
+
+        if w_extra >= 2500:
+            tarifa_wa = 0.018
+        elif w_extra >= 1000:
+            tarifa_wa = 0.020
+        else:
+            tarifa_wa = float(TARIFAS_CALCULADORA["costo_whatsapp_unitario"])
+
+        costo_u_mes = round(u_extra * float(TARIFAS_CALCULADORA["costo_usuario_extra_mensual"]), 2)
+        costo_e_mes = round(e_extra * tarifa_email, 2)
+        costo_w_mes = round(w_extra * tarifa_wa, 2)
+        costo_mensual_total = round(costo_u_mes + costo_e_mes + costo_w_mes, 2)
+
+        costo_nuevo_periodo = round(costo_mensual_total * meses_no_usados, 2)
         diferencia = max(1.00, costo_nuevo_periodo)
         msi_meses = 6 if diferencia > 250 else 3
+
+        partes_desc = []
+        if u_extra > 0:
+            partes_desc.append(f"+{u_extra} usr")
+        if e_extra > 0:
+            partes_desc.append(f"+{e_extra} correos/mes")
+        if w_extra > 0:
+            partes_desc.append(f"+{w_extra} WA/mes")
+        desc_str = f"{', '.join(partes_desc)} ({meses_no_usados} meses restantes)"
+
         return {
-            "tipo": "agregar_usuarios",
-            "modalidad_pago": "mejora_usuarios",
+            "tipo": "agregar_recursos",
+            "modalidad_pago": "mejora_recursos" if (e_extra > 0 or w_extra > 0) else "mejora_usuarios",
             "plan_id": plan_actual_id,
             "plan_actual_nombre": plan_actual["nombre"],
-            "usuarios_adicionales": adicionales,
+            "usuarios_adicionales": u_extra,
+            "emails_adicionales": e_extra,
+            "whatsapp_adicionales": w_extra,
+            "costo_usuarios_mes": costo_u_mes,
+            "costo_emails_mes": costo_e_mes,
+            "costo_whatsapp_mes": costo_w_mes,
+            "costo_mensual_adicional": costo_mensual_total,
+            "meses_totales": meses_totales,
+            "meses_usados": meses_usados,
+            "meses_no_usados": meses_no_usados,
             "dias_totales": dias_totales,
             "dias_restantes": dias_restantes,
             "monto_pagado_actual": round(monto_pagado_actual, 2),
@@ -1186,7 +1453,8 @@ def _calcular_upgrade_diferencia(
             "diferencia_usd": diferencia,
             "msi_meses": msi_meses,
             "cuota_msi": round(diferencia / msi_meses, 2),
-            "descripcion": f"+{adicionales} usuarios adicionales ({dias_restantes} días restantes)",
+            "nota_prorrateo": nota_prorrateo,
+            "descripcion": desc_str,
         }
 
     raise HTTPException(status_code=400, detail="Tipo de mejora no soportado.")
@@ -1210,7 +1478,9 @@ async def api_upgrade_preview(request: Request, payload: Dict[str, Any] = Body(.
         cli=cli_rows[0],
         tipo=str(payload.get("tipo", "cambio_plan")).strip(),
         nuevo_plan_codigo=str(payload.get("nuevo_plan_codigo", "")),
-        usuarios_adicionales=int(payload.get("usuarios_adicionales", 1)),
+        usuarios_adicionales=int(payload.get("usuarios_adicionales", 0) or 0),
+        emails_adicionales=int(payload.get("emails_adicionales", 0) or 0),
+        whatsapp_adicionales=int(payload.get("whatsapp_adicionales", 0) or 0),
     )
     return {"success": True, "resumen": resumen}
 
@@ -1234,7 +1504,9 @@ async def api_upgrade_intent(request: Request, payload: Dict[str, Any] = Body(..
         cli=cli,
         tipo=str(payload.get("tipo", "cambio_plan")).strip(),
         nuevo_plan_codigo=str(payload.get("nuevo_plan_codigo", "")),
-        usuarios_adicionales=int(payload.get("usuarios_adicionales", 1)),
+        usuarios_adicionales=int(payload.get("usuarios_adicionales", 0) or 0),
+        emails_adicionales=int(payload.get("emails_adicionales", 0) or 0),
+        whatsapp_adicionales=int(payload.get("whatsapp_adicionales", 0) or 0),
     )
 
     client_tx_id = generate_client_tx_id(cid, "UPG")
@@ -1248,9 +1520,12 @@ async def api_upgrade_intent(request: Request, payload: Dict[str, Any] = Body(..
             "tipo": resumen["tipo"],
             "nuevo_plan_codigo": resumen.get("nuevo_plan_codigo", ""),
             "usuarios_adicionales": resumen.get("usuarios_adicionales", 0),
+            "emails_adicionales": resumen.get("emails_adicionales", 0),
+            "whatsapp_adicionales": resumen.get("whatsapp_adicionales", 0),
             "credito_actual": resumen["credito_actual"],
             "costo_nuevo_periodo": resumen["costo_nuevo_periodo"],
             "diferencia_usd": resumen["diferencia_usd"],
+            "meses_no_usados": resumen.get("meses_no_usados", 0),
             "dias_restantes": resumen["dias_restantes"],
         },
     )
@@ -1320,7 +1595,7 @@ async def api_crear_usuario_app(request: Request, payload: Dict[str, Any] = Body
     if actuales >= max_usr:
         raise HTTPException(
             status_code=400,
-            detail=f"Has completado el límite de {max_usr} usuarios autorizados en tu plan. Si necesitas sumar más colaboradores, contrata usuarios adicionales ($6/mes)."
+            detail=f"Has completado el límite de {max_usr} usuarios autorizados en tu plan. Si necesitas sumar más colaboradores, contrata usuarios adicionales ($4/mes)."
         )
 
     # Validar campos requeridos (el usuario es el correo registrado y la contraseña se genera aleatoriamente)
@@ -1450,6 +1725,7 @@ async def api_crear_usuario_app(request: Request, payload: Dict[str, Any] = Body
         else f"Usuario creado, pero no se pudo enviar el correo ({err_envio}). Contraseña temporal: {temp_password}"
     )
 
+    invalidate_cliente_cache(cliente_id)
     return {
         "success": True,
         "email_sent": enviado,
@@ -1516,6 +1792,7 @@ async def api_toggle_usuario_app(request: Request, payload: Dict[str, Any] = Bod
     except Exception:
         pass
 
+    invalidate_cliente_cache(cliente_id)
     return {
         "success": True,
         "message": f"Usuario '{username}' {'activado' if nuevo_estado else 'desactivado'} correctamente."
@@ -1627,6 +1904,7 @@ async def api_editar_usuario_app(request: Request, payload: Dict[str, Any] = Bod
     except Exception:
         pass
 
+    invalidate_cliente_cache(cliente_id)
     return {
         "success": True,
         "message": f"Usuario '{username}' actualizado correctamente.",
@@ -1684,6 +1962,7 @@ async def api_guardar_notificaciones(request: Request, payload: Dict[str, Any] =
         }
 
     save_cliente_notificaciones_habilitadas(cliente_id, id_plan, nombre_plan, preferencias)
+    invalidate_cliente_cache(cliente_id)
 
     # Sincronizar toggles de WhatsApp con wesbyte_api
     try:
@@ -1813,18 +2092,73 @@ async def api_probar_plantilla_notificacion(request: Request, payload: TestNotif
     if cliente_id <= 0:
         raise HTTPException(status_code=403, detail="Solo clientes autenticados pueden probar plantillas.")
 
-    _assert_demo_not_expired_by_cid(cliente_id)
+    demo_ctx = _assert_demo_not_expired_by_cid(cliente_id)
+    es_demo = bool(demo_ctx["demo"].get("es_demo"))
+    notif_cod = str(payload.notificacion_codigo or "").strip()
+
+    DEMO_MAX_PRUEBAS_POR_NOTIF = 3
+    pruebas_usadas = 0
+    if es_demo:
+        try:
+            cnt_rows = _rows(
+                f"""
+                SELECT COUNT(1) AS total
+                FROM `{P}.{W}.logs_pruebas_notificaciones`
+                WHERE client_id = @cid AND notificacion_codigo = @cod
+                """,
+                [
+                    bigquery.ScalarQueryParameter("cid", "INT64", cliente_id),
+                    bigquery.ScalarQueryParameter("cod", "STRING", notif_cod),
+                ],
+            )
+            pruebas_usadas = int(cnt_rows[0]["total"]) if cnt_rows else 0
+        except Exception:
+            pruebas_usadas = 0
+
+        if pruebas_usadas >= DEMO_MAX_PRUEBAS_POR_NOTIF:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"Has alcanzado el límite de {DEMO_MAX_PRUEBAS_POR_NOTIF} pruebas para esta notificación en tu Plan Demo. "
+                    "Activa un plan comercial para realizar envíos de prueba ilimitados."
+                ),
+            )
 
     try:
         result = await send_test_notification(
             cliente_id=cliente_id,
-            notificacion_codigo=payload.notificacion_codigo,
+            notificacion_codigo=notif_cod,
             canal=payload.canal,
             destino=payload.destino,
             asunto=payload.asunto,
             mensaje=payload.mensaje,
             es_html=payload.es_html,
         )
+        if es_demo:
+            try:
+                nid = get_next_id("logs_pruebas_notificaciones", W)
+                append_rows(
+                    W,
+                    "logs_pruebas_notificaciones",
+                    [
+                        {
+                            "id": nid,
+                            "client_id": cliente_id,
+                            "notificacion_codigo": notif_cod,
+                            "canal": str(payload.canal or "").strip().lower(),
+                            "destino": str(payload.destino or "").strip(),
+                            "created_at": datetime.datetime.now(datetime.timezone.utc),
+                        }
+                    ],
+                )
+                pruebas_usadas += 1
+            except Exception as exc:
+                logger.warning(f"No se pudo registrar log de prueba Demo para cliente {cliente_id}: {exc}")
+            result["pruebas_restantes_demo"] = max(0, DEMO_MAX_PRUEBAS_POR_NOTIF - pruebas_usadas)
+            result["message"] = (
+                f"{result.get('message', 'Prueba enviada')} "
+                f"(Te quedan {result['pruebas_restantes_demo']} de {DEMO_MAX_PRUEBAS_POR_NOTIF} pruebas en Plan Demo)."
+            )
         return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -1851,14 +2185,136 @@ async def api_guardar_plantilla_notificacion(request: Request, payload: Dict[str
             asunto=payload.get("asunto"),
             mensaje=str(payload.get("mensaje") or ""),
             es_html=bool(payload.get("es_html", False)),
+            config_json=payload.get("config_json"),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    invalidate_cliente_cache(cliente_id)
     return {
         "success": True,
         "message": "Plantilla guardada correctamente.",
     }
+
+
+@router.post("/api/notificaciones/plantillas/render-preset")
+async def api_render_preset_plantilla_email(request: Request, payload: Dict[str, Any] = Body(...)):
+    """Genera el HTML email-safe de una de las 3 plantillas preestablecidas (clasica, moderna, minimalista)."""
+    sesion = get_sesion(request)
+    if not sesion:
+        raise HTTPException(status_code=401, detail="Sesión expirada.")
+    cliente_id = int(sesion.get("cid") or sesion.get("cliente_id") or 0)
+    if cliente_id <= 0:
+        raise HTTPException(status_code=403, detail="Solo clientes autenticados pueden diseñar plantillas.")
+
+    from app.services.email_template_designer_service import render_preset_email_html
+
+    try:
+        html_out = render_preset_email_html(
+            preset_id=str(payload.get("preset_id") or "clasica"),
+            notificacion_codigo=str(payload.get("notificacion_codigo") or "envio_poliza"),
+            primary_color=str(payload.get("primary_color") or "#1e3a8a"),
+            logo_url=str(payload.get("logo_url") or ""),
+            broker_nombre=str(payload.get("broker_nombre") or "{{broker}}"),
+            titulo=payload.get("titulo"),
+            saludo=payload.get("saludo"),
+            intro=payload.get("intro"),
+            cierre=payload.get("cierre"),
+            mostrar_tabla_resumen=bool(payload.get("mostrar_tabla_resumen", True)),
+        )
+        return {"success": True, "html": html_out}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/api/notificaciones/plantillas/ia-generar")
+async def api_generar_plantilla_email_ia(request: Request, payload: Dict[str, Any] = Body(...)):
+    """
+    Endpoint de Adaptación/Generación de plantillas de correo con IA (Gemini gemini-3.8-flash):
+    1. Valida que el plan del tenant sea Plan 2 (Medium) o Plan 3 (Super Gold).
+    2. Valida que no haya excedido su cuota mensual de generaciones IA.
+    3. Inyecta únicamente el diccionario de variables reales de la notificación solicitada.
+    4. Retorna { html_final, variables_usadas, variables_descartadas, resumen_cambios } y cuota actualizada.
+    """
+    sesion = get_sesion(request)
+    if not sesion:
+        raise HTTPException(status_code=401, detail="Sesión expirada.")
+    cliente_id = int(sesion.get("cid") or sesion.get("cliente_id") or 0)
+    if cliente_id <= 0:
+        raise HTTPException(status_code=403, detail="Solo clientes autenticados pueden usar el Editor con IA.")
+
+    ctx = _assert_demo_not_expired_by_cid(cliente_id)
+    cliente = ctx["cliente"]
+    plan = ctx["plan"]
+    demo = ctx["demo"]
+
+    from app.services.email_template_designer_service import (
+        generate_or_adapt_email_template_with_ai,
+        get_ai_quota_for_plan,
+        get_ai_usage_this_month,
+        record_ai_usage,
+    )
+
+    ia_ok, cuota_total = get_ai_quota_for_plan(
+        int(cliente.get("plan_id") or 0),
+        str(plan.get("codigo") or ""),
+        bool(demo.get("es_demo")),
+    )
+    if not ia_ok:
+        raise HTTPException(
+            status_code=403,
+            detail="El Editor Inteligente con IA e Importación HTML está disponible en los planes Medium y Super Gold. Mejora tu plan para desbloquearlo.",
+        )
+
+    usadas = get_ai_usage_this_month(cliente_id)
+    if usadas >= cuota_total:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Has alcanzado tu límite mensual de {cuota_total} generaciones con IA en tu plan actual.",
+        )
+
+    notificacion_codigo = str(payload.get("notificacion_codigo") or "").strip()
+    instrucciones = str(payload.get("prompt_o_html") or "").strip()
+    current_html = str(payload.get("current_html") or "").strip()
+    primary_color = str(payload.get("primary_color") or "#1e3a8a").strip()
+    logo_url = str(payload.get("logo_url") or cliente.get("logo") or "").strip()
+
+    if not instrucciones:
+        raise HTTPException(
+            status_code=400,
+            detail="Escribe tus instrucciones de diseño o pega el código HTML que deseas adaptar.",
+        )
+
+    try:
+        resultado = await generate_or_adapt_email_template_with_ai(
+            notificacion_codigo=notificacion_codigo,
+            user_prompt_or_html=instrucciones,
+            current_html=current_html,
+            primary_color=primary_color,
+            logo_url=logo_url,
+            broker_nombre=str(cliente.get("nombre") or "Seguros Alianza"),
+        )
+        record_ai_usage(
+            client_id=cliente_id,
+            notificacion_codigo=notificacion_codigo,
+            prompt_resumen=instrucciones[:250],
+            modelo=resultado.get("modelo_usado", "gemini-3.8-flash"),
+        )
+        nuevas_usadas = usadas + 1
+        disponibles = max(0, cuota_total - nuevas_usadas)
+        return {
+            "success": True,
+            **resultado,
+            "cuota": {
+                "cuota_total": cuota_total,
+                "usadas_mes": nuevas_usadas,
+                "disponibles_mes": disponibles,
+            },
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
 
 
 @router.post("/api/superadmin/planes/guardar")
@@ -1913,6 +2369,7 @@ async def api_superadmin_guardar_plan(request: Request, payload: Dict[str, Any] 
                 activo = {activo}
             WHERE id = {plan_id}
         """)
+        invalidate_planes_cache()
         return {"success": True, "message": f"Plan '{nombre}' actualizado correctamente.", "id": plan_id}
 
     nuevo_id = get_next_id("planes", W)
@@ -1930,6 +2387,7 @@ async def api_superadmin_guardar_plan(request: Request, payload: Dict[str, Any] 
             {es_destacado}, {es_personalizado}, {activo}, CURRENT_TIMESTAMP()
         )
     """)
+    invalidate_planes_cache()
     return {"success": True, "message": f"Plan '{nombre}' creado correctamente.", "id": nuevo_id}
 
 
@@ -1965,7 +2423,8 @@ async def api_subir_logo_cliente(request: Request, file: UploadFile = File(...))
     drive_filename = f"cliente_{cliente_id}_{uuid.uuid4().hex[:8]}.{ext}"
 
     try:
-        drive_res = GoogleDriveService().upload_logo(
+        drive_res = await asyncio.to_thread(
+            GoogleDriveService().upload_logo,
             file_bytes=content,
             filename=drive_filename,
             mime_type=mime_type,
@@ -1975,13 +2434,18 @@ async def api_subir_logo_cliente(request: Request, file: UploadFile = File(...))
         logger.error(f"Error subiendo logo a Google Drive: {exc}")
         raise HTTPException(status_code=500, detail=f"Error subiendo logo a Google Drive: {str(exc)}")
 
+    prime_media_cache(drive_res.get("file_id", ""), mime_type, content)
     logo_url = drive_res["url"]
     clean_url = logo_url.replace("'", "''")
-    execute_query(f"""
+    await asyncio.to_thread(
+        execute_query,
+        f"""
         UPDATE `{P}.{W}.clientes`
         SET logo = '{clean_url}'
         WHERE id = {cliente_id}
-    """)
+        """,
+    )
+    invalidate_cliente_cache(cliente_id)
 
     return {
         "success": True,
@@ -2008,12 +2472,16 @@ async def api_guardar_datos_empresa(request: Request, payload: Dict[str, Any] = 
 
     clean_nombre = nombre_empresa.replace("'", "''")
     clean_ruc = ruc_cedula.replace("'", "''")
-    execute_query(f"""
+    await asyncio.to_thread(
+        execute_query,
+        f"""
         UPDATE `{P}.{W}.clientes`
         SET nombre = '{clean_nombre}',
             ruc_cedula = '{clean_ruc}'
         WHERE id = {cliente_id}
-    """)
+        """,
+    )
+    invalidate_cliente_cache(cliente_id)
     return {
         "success": True,
         "nombre_empresa": nombre_empresa,

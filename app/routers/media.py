@@ -81,6 +81,13 @@ def _write_cache(file_id: str, content_type: str, data: bytes) -> None:
         logger.debug(f"No se pudo escribir caché en disco para {file_id}: {exc}")
 
 
+def prime_media_cache(file_id: str, content_type: str, data: bytes) -> None:
+    """Pre-carga en memoria/disco un archivo recién subido para evitar re-descargarlo desde Drive."""
+    ct = _clean_content_type(content_type)
+    if file_id and ct and data and _VALID_ID_RE.match(file_id):
+        _write_cache(file_id, ct, data)
+
+
 async def _fetch_drive_image(file_id: str) -> Optional[Tuple[str, bytes]]:
     urls = (
         f"https://lh3.googleusercontent.com/d/{file_id}",

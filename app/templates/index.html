@@ -240,6 +240,85 @@
   </div>
 </section>
 
+<!-- ============ ESTUDIO DE CORREOS Y WHATSAPP CON IA ============ -->
+<section id="estudio-diseno" class="py-5" style="background:linear-gradient(180deg,#ffffff 0%,#f5f3ff 100%);">
+  <div class="container-xl py-2">
+    <div class="row align-items-center g-4 mb-4">
+      <div class="col-lg-8">
+        <span class="badge bg-purple-lt text-purple fw-bold px-3 py-2 mb-2" style="border-radius:999px;">
+          <i class="ti ti-sparkles me-1"></i> NUEVO · ESTUDIO DE DISEÑO DE CORREOS Y WHATSAPP
+        </span>
+        <h2 class="display-6 mb-2" style="font-weight:900;letter-spacing:-.03em;color:#0f172a;">
+          Diseña correos elegantes <span style="background:linear-gradient(90deg,#4f46e5,#d946ef);-webkit-background-clip:text;background-clip:text;color:transparent;">sin saber HTML</span> y con IA
+        </h2>
+        <p class="text-muted fs-3 mb-0" style="max-width:700px;">
+          Cada notificación de tu correduría (entregas de póliza, renovaciones, regularizaciones y cumpleaños) cuenta con un editor visual intuitivo que protege automáticamente las variables de envío.
+        </p>
+      </div>
+      <div class="col-lg-4 text-lg-end">
+        <a href="#planes-grid" class="btn btn-grad btn-lg px-4 py-3 fw-bold">
+          <i class="ti ti-wand me-2"></i> Ver planes con IA
+        </a>
+      </div>
+    </div>
+
+    <div class="row g-4">
+      <div class="col-md-4">
+        <div class="pain-card h-100" style="border-top:4px solid #4f46e5;">
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <div class="icon-bubble bg-grad-1 mb-0"><i class="ti ti-layout-cards"></i></div>
+            <span class="badge bg-indigo-lt text-indigo fw-bold">Todos los planes</span>
+          </div>
+          <h4 class="fw-bold text-dark">3 Plantillas Base Profesionales</h4>
+          <p class="text-muted small mb-3">
+            Elige entre <strong>Clásica</strong>, <strong>Moderna</strong> o <strong>Minimalista</strong> (100% compatibles con Gmail, Outlook y Apple Mail). Personaliza el logo de tu agencia, el color de tu marca y los textos con 1 clic en tus variables.
+          </p>
+          <div class="d-flex gap-1 flex-wrap">
+            <span class="badge bg-light text-dark border">Clásica</span>
+            <span class="badge bg-light text-dark border">Moderna</span>
+            <span class="badge bg-light text-dark border">Minimalista</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="pain-card h-100" style="border-top:4px solid #06b6d4;">
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <div class="icon-bubble bg-grad-2 mb-0"><i class="ti ti-device-desktop-analytics"></i></div>
+            <span class="badge bg-cyan-lt text-cyan fw-bold">Tiempo Real</span>
+          </div>
+          <h4 class="fw-bold text-dark">Simulador Escritorio, Móvil y WhatsApp</h4>
+          <p class="text-muted small mb-3">
+            Visualiza en pantalla dividida cómo llegará tu correo en <strong>Escritorio (600px)</strong> y <strong>Móvil (375px)</strong> o tu burbuja de <strong>WhatsApp</strong> con datos de ejemplo realistas antes de enviar una sola alerta.
+          </p>
+          <div class="d-flex gap-1 flex-wrap">
+            <span class="badge bg-light text-dark border"><i class="ti ti-device-desktop me-1"></i>600px</span>
+            <span class="badge bg-light text-dark border"><i class="ti ti-device-mobile me-1"></i>375px</span>
+            <span class="badge bg-light text-dark border"><i class="ti ti-brand-whatsapp me-1 text-success"></i>Chat en vivo</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="pain-card h-100 position-relative" style="border-top:4px solid #d946ef;background:linear-gradient(180deg,#ffffff 0%,#faf5ff 100%);">
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <div class="icon-bubble bg-grad-4 mb-0"><i class="ti ti-sparkles"></i></div>
+            <span class="badge bg-warning text-dark fw-bold"><i class="ti ti-crown me-1"></i>PRO · Medium y Gold</span>
+          </div>
+          <h4 class="fw-bold text-dark">Diseño Libre e Importación con IA</h4>
+          <p class="text-muted small mb-3">
+            Pega cualquier código HTML externo o escribe en español el estilo que deseas. Nuestra IA lo convierte a HTML seguro para correo, <strong>conecta tus variables reales</strong> y descarta las inexistentes automáticamente (<strong>10 ediciones/mes</strong>).
+          </p>
+          <div class="d-flex gap-1 flex-wrap">
+            <span class="badge bg-purple-lt text-purple fw-bold">Importa HTML</span>
+            <span class="badge bg-green-lt text-green fw-bold">Cero errores de variables</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ============ PLANES ============ -->
 <section id="planes-grid" class="py-5 section-dark">
   <div class="container-xl py-3" style="position:relative;z-index:1;">
@@ -353,6 +432,10 @@
               <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-users"></i></span><span><strong>{{ plan.max_usuarios }}</strong> {% if plan.max_usuarios == 1 %}usuario{% else %}usuarios{% endif %} en tu base de datos</span></li>
               <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-brand-whatsapp"></i></span><span><strong>{{ "{:,}".format(plan.limite_mensual_whatsapp) }}</strong> alertas por WhatsApp al mes {% if plan.whatsapp_detalle %}<small class="text-muted">({{ plan.whatsapp_detalle }})</small>{% endif %}</span></li>
               <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-mail"></i></span><span><strong>{{ "{:,}".format(plan.limite_mensual_emails) }}</strong> correos y notificaciones personalizadas al mes <small class="text-muted">(cumpleaños, avisos y cobranza)</small></span></li>
+              <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-palette"></i></span><span><strong>3 plantillas de correo</strong> <small class="text-muted">(Clásica, Moderna, Minimalista)</small> + diseñador visual de WhatsApp</span></li>
+              {% if plan.codigo != 'PRIME' %}
+              <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic" style="background:linear-gradient(135deg,#7c3aed,#d946ef);color:#fff;"><i class="ti ti-sparkles"></i></span><span><strong>Estudio de Correos con IA</strong> <span class="badge bg-purple-lt text-purple fw-bold ms-1" style="font-size:10px;">10/mes</span> <small class="text-muted">(importa HTML o diseña en español)</small></span></li>
+              {% endif %}
               <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-building-bank"></i></span><span><strong>{{ "{:,}".format(plan.limite_mensual_api_ecuador) }}</strong> consultas a datos estatales al mes</span></li>
               {% if plan.pdf_detalle %}
               <li class="d-flex align-items-center gap-2 py-1"><span class="check-ic"><i class="ti ti-file-text"></i></span><span><strong>{{ plan.pdf_detalle }}</strong></span></li>
@@ -384,7 +467,7 @@
             <span class="small" style="color:rgba(255,255,255,0.85)">Nos encargamos de migrar tu información para que empieces a usar Wesbyte sin perder un solo minuto.</span>
           </div>
           <div class="mt-2 pt-2 border-top border-light border-opacity-25 small" style="color:rgba(255,255,255,0.92)">
-            <i class="ti ti-info-circle me-1"></i> <strong>Nota comercial:</strong> Ningún plan incluye envío de promociones o venta por WhatsApp; sin embargo, puedes cotizar dicho servicio por separado. Usuario adicional: <strong>$6/mes</strong>.
+            <i class="ti ti-info-circle me-1"></i> <strong>Nota comercial:</strong> Ningún plan incluye envío de promociones o venta por WhatsApp; sin embargo, puedes cotizar dicho servicio por separado. Usuario adicional: <strong>$4/mes</strong>.
           </div>
         </div>
       </div>
