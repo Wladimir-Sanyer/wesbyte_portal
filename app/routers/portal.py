@@ -5,14 +5,18 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
 import secrets
+import jwt
 from fastapi import APIRouter, Request, HTTPException, Body, Query, Depends, UploadFile, File
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    ALGORITHM,
     APP_VERSION,
     BIGQUERY_PROJECT_ID,
+    SECRET_KEY,
     WESBYTES_DATASET_ID,
     TEMPLATE_DATASET_ID,
     WESBYTE_APP_URL,
@@ -136,6 +140,40 @@ async def api_registrar_cliente(payload: Dict[str, Any] = Body(...)):
         reg_data = register_tenant_and_user(payload)
         cliente_id = int(reg_data["cliente_id"])
         _active_checkouts[cliente_id] = reg_data
+
+        if reg_data.get("es_demo"):
+            exp = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+            token = jwt.encode(
+                {
+                    "sub": reg_data["correo"],
+                    "uid": reg_data["usuario_id"],
+                    "cid": cliente_id,
+                    "cliente_id": cliente_id,
+                    "nombre": reg_data["nombres_completos"],
+                    "empresa": reg_data["nombre_empresa"],
+                    "dataset_id": reg_data["dataset_id"],
+                    "rol": "admin",
+                    "exp": exp,
+                },
+                SECRET_KEY,
+                algorithm=ALGORITHM,
+            )
+            resp = JSONResponse(
+                {
+                    "success": True,
+                    "es_demo": True,
+                    "cliente_id": cliente_id,
+                    "checkout_url": "/mi-portal",
+                }
+            )
+            resp.set_cookie(
+                key="wb_cliente",
+                value=token,
+                httponly=True,
+                samesite="lax",
+                max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            )
+            return resp
 
         plan = reg_data["plan"]
         periodo = reg_data.get("periodo", "1_year")

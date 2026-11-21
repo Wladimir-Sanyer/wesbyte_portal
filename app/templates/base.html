@@ -48,9 +48,12 @@
         <div class="container-xl">
           <div class="row align-items-center justify-content-between g-3">
             <div class="col-md-7">
-              <div class="d-flex align-items-center gap-2 mb-1">
+              <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
                 <i class="ti ti-shield-lock fs-2" style="color:#7c3aed"></i>
                 <strong>Tus datos, solo tuyos: base de datos aislada y acuerdo de confidencialidad</strong>
+                <button type="button" class="btn btn-sm btn-outline-primary fw-bold ms-1" style="border-radius:8px;" onclick="abrirModalAcuerdoConfidencialidad()">
+                  <i class="ti ti-file-certificate me-1"></i> Ver Acuerdo Oficial (NDA)
+                </button>
               </div>
               <p class="text-muted small mb-0">
                 Si tu equipo legal requiere que firmemos un acuerdo de confidencialidad (NDA) propio, envíalo a
@@ -69,6 +72,195 @@
       </footer>
     </div>
   </div>
+
+  <!-- MODAL OFICIAL: ACUERDO DE CONFIDENCIALIDAD, NO DIVULGACIÓN (NDA) Y PROTECCIÓN DE DATOS -->
+  <div class="modal modal-blur fade" id="modalAcuerdoConfidencialidad" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow-lg" style="border-radius:22px;overflow:hidden;">
+        <div class="modal-header text-white py-3 px-4" style="background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 55%,#312e81 100%);">
+          <div class="d-flex align-items-center gap-3">
+            <span class="avatar avatar-md rounded-circle" style="background:rgba(255,255,255,0.14);color:#fcd34d;">
+              <i class="ti ti-shield-check fs-1"></i>
+            </span>
+            <div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="badge bg-warning text-dark fw-bold">DOCUMENTO LEGAL VINCULANTE · NDA-WB-EC-2026</span>
+                <span class="badge" style="background:rgba(255,255,255,0.15);color:#e2e8f0;">Cumplimiento LOPDP Ecuador</span>
+              </div>
+              <h3 class="modal-title mb-0 mt-1 fw-bold text-white">
+                Acuerdo Marco de Confidencialidad, No Divulgación (NDA) y Custodia de Datos
+              </h3>
+            </div>
+          </div>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+
+        <div class="modal-body p-4 p-lg-5" id="ndaPrintableContent" style="background:#f8fafc;color:#1e293b;line-height:1.7;font-size:0.94rem;">
+          <div class="bg-white p-4 p-lg-5 rounded-4 border shadow-sm">
+            <!-- Encabezado documental -->
+            <div class="d-flex flex-wrap justify-content-between align-items-start border-bottom pb-3 mb-4 gap-3">
+              <div>
+                <div class="text-uppercase fw-bold small text-indigo" style="letter-spacing:.08em;">Certificación Corporativa de Reserva y Seguridad</div>
+                <h2 class="fw-black mb-1" style="font-weight:900;color:#0f172a;">CONTRATO DE CONFIDENCIALIDAD Y ENCARGO DE TRATAMIENTO DE DATOS</h2>
+                <div class="small text-muted">Jurisdicción aplicable: República del Ecuador · Ley Orgánica de Protección de Datos Personales (LOPDP)</div>
+              </div>
+              <div class="text-md-end small">
+                <div><strong>Código:</strong> <code>NDA-WB-EC-2026-V1</code></div>
+                <div><strong>Estándar:</strong> ISO/IEC 27001 &amp; Cloud Data Isolation</div>
+                <div><strong>Estado:</strong> <span class="badge bg-success text-white">Vigente y Vinculante</span></div>
+              </div>
+            </div>
+
+            <!-- Comparecientes -->
+            <div class="p-3 rounded-3 mb-4" style="background:#f1f5f9;border-left:4px solid #4f46e5;">
+              <p class="mb-1">
+                <strong>PARTES VINCULADAS:</strong> De una parte, <strong>WESBYTE S.A.S. / PLATAFORMA TECNOLÓGICA WESBYTE</strong> (en adelante <em>"WESBYTE"</em> o <em>"EL ENCARGADO TECNOLÓGICO"</em>); y, de otra parte, <strong id="ndaNombreClienteDinamico">EL CLIENTE / LA AGENCIA CONTRATANTE</strong> (en adelante <em>"EL CLIENTE"</em> o <em>"EL PROPIETARIO DE LOS DATOS"</em>), quienes suscriben electrónica y automáticamente el presente Acuerdo al registrar una cuenta comercial o Plan Demo en la plataforma.
+              </p>
+            </div>
+
+            <!-- Cláusulas -->
+            <h5 class="fw-bold text-dark mt-4 mb-2"><i class="ti ti-gavel me-1 text-indigo"></i> CLÁUSULA PRIMERA: OBJETO Y ALCANCE</h5>
+            <p>
+              El presente instrumento tiene por objeto establecer los términos y obligaciones legales, técnicas y operativas bajo las cuales <strong>WESBYTE</strong> garantiza el secreto comercial, la reserva absoluta, la integridad y la disponibilidad de toda la información ingresada, procesada o almacenada por <strong>EL CLIENTE</strong> dentro de la plataforma SaaS Wesbyte, incluyendo su período de prueba (Plan Demo) y cualquier suscripción comercial posterior.
+            </p>
+
+            <h5 class="fw-bold text-dark mt-4 mb-2"><i class="ti ti-database-lock me-1 text-indigo"></i> CLÁUSULA SEGUNDA: PROPIEDAD EXCLUSIVA Y AISLAMIENTO TÉCNICO (ARQUITECTURA MULTI-TENANT)</h5>
+            <p>
+              <strong>2.1. Titularidad Exclusiva:</strong> <strong>WESBYTE</strong> reconoce expresamente que la totalidad de las bases de datos, carteras de asegurados, pólizas, anexos, plantillas y registros contables o comerciales son de <strong>propiedad única, exclusiva e intransferible de EL CLIENTE</strong>.<br>
+              <strong>2.2. Aislamiento por Dataset Dedicado:</strong> A nivel de infraestructura en Google Cloud Platform (BigQuery), <strong>WESBYTE</strong> aprovisiona un contenedor de datos lógico e independiente (<code>dataset_id</code> dedicado) para cada agencia, garantizando que ningún otro cliente, corredor o tercero tenga visibilidad o acceso cruzado a sus registros.
+            </p>
+
+            <h5 class="fw-bold text-dark mt-4 mb-2"><i class="ti ti-file-shield me-1 text-indigo"></i> CLÁUSULA TERCERA: DEFINICIÓN DE INFORMACIÓN CONFIDENCIAL</h5>
+            <p>
+              Se considera <strong>Información Confidencial</strong> y secreto empresarial protegido a toda información cargada mediante archivos Excel, documentos PDF procesados por IA, formularios manuales o integraciones API, incluyendo de manera enunciativa mas no limitativa:
+            </p>
+            <ul class="mb-3">
+              <li>Nombres, apellidos, razones sociales, números de cédula, RUC, fechas de nacimiento, direcciones, teléfonos celulares y correos electrónicos de los clientes o asegurados de <strong>EL CLIENTE</strong>.</li>
+              <li>Números de contrato/póliza, ramos contratados, aseguradoras, planes, primas netas/totales, comisiones, condiciones de renovación, anexos PDF y estados de regularización.</li>
+              <li>Estrategias comerciales, métricas financieras, reportes gerenciales, credenciales de acceso y configuraciones de automatización de WhatsApp y correo electrónico.</li>
+            </ul>
+
+            <h5 class="fw-bold text-dark mt-4 mb-2"><i class="ti ti-lock-access me-1 text-indigo"></i> CLÁUSULA CUARTA: PROHIBICIÓN ESTRICTA DE COMERCIALIZACIÓN, CESIÓN O USO INDEBIDO</h5>
+            <p>
+              <strong>WESBYTE</strong> se obliga formalmente a:
+            </p>
+            <ul class="mb-3">
+              <li><strong>No divulgar, vender, alquilar, ceder ni transferir</strong> bajo ningún título la cartera de clientes ni los registros de <strong>EL CLIENTE</strong> a compañías aseguradoras, brókers competidores, agencias de marketing ni terceros.</li>
+              <li><strong>No contactar directamente</strong> a los clientes finales o asegurados registrados en el dataset de <strong>EL CLIENTE</strong>, salvo a través de las notificaciones automáticas o manuales expresamente configuradas y ordenadas por <strong>EL CLIENTE</strong> desde su propio panel.</li>
+              <li><strong>No entrenar modelos públicos externos</strong> con la información privada o documentos PDF de las pólizas de <strong>EL CLIENTE</strong>.</li>
+            </ul>
+
+            <h5 class="fw-bold text-dark mt-4 mb-2"><i class="ti ti-scale me-1 text-indigo"></i> CLÁUSULA QUINTA: CUMPLIMIENTO DE LA LEY ORGÁNICA DE PROTECCIÓN DE DATOS PERSONALES (LOPDP)</h5>
+            <p>
+              En estricto apego a la <strong>Ley Orgánica de Protección de Datos Personales de la República del Ecuador (LOPDP)</strong>:
+            </p>
+            <ul class="mb-3">
+              <li><strong>EL CLIENTE</strong> actúa en calidad de <em>Responsable del Tratamiento</em> respecto de los datos personales de sus clientes y asegurados, declarando contar con la base legitimadora o consentimiento para el envío de avisos transaccionales, renovaciones y gestión de pólizas.</li>
+              <li><strong>WESBYTE</strong> actúa únicamente en calidad de <em>Encargado del Tratamiento</em>, limitándose a procesar la información siguiendo las instrucciones automatizadas de <strong>EL CLIENTE</strong> y aplicando los principios de confidencialidad, minimización y seguridad.</li>
+            </ul>
+
+            <h5 class="fw-bold text-dark mt-4 mb-2"><i class="ti ti-shield-lock me-1 text-indigo"></i> CLÁUSULA SEXTA: MEDIDAS DE SEGURIDAD CIBERNÉTICA Y AUDITORÍA</h5>
+            <p>
+              Para salvaguardar la Información Confidencial, <strong>WESBYTE</strong> implementa controles de seguridad de grado empresarial:
+            </p>
+            <ul class="mb-3">
+              <li><strong>Cifrado en tránsito y en reposo:</strong> Todas las comunicaciones se realizan bajo canales cifrados TLS 1.2/1.3 (HTTPS) y el almacenamiento en Google Cloud cuenta con cifrado AES-256 en reposo.</li>
+              <li><strong>Control de Acceso Basado en Roles (RBAC):</strong> Contraseñas protegidas con hash criptográfico <code>Bcrypt</code>, sesiones firmadas mediante tokens <code>JWT</code> y segregación de permisos por panel y por ramo de seguro.</li>
+              <li><strong>Trazabilidad Completa:</strong> Registro inmutable de auditoría de accesos, conteo de sesiones y bitácoras transaccionales de cada envío de WhatsApp, correo electrónico y consulta API.</li>
+            </ul>
+
+            <h5 class="fw-bold text-dark mt-4 mb-2"><i class="ti ti-refresh-alert me-1 text-indigo"></i> CLÁUSULA SÉPTIMA: PORTABILIDAD, DEVOLUCIÓN Y ELIMINACIÓN DEFINITIVA</h5>
+            <p>
+              <strong>EL CLIENTE</strong> conserva en todo momento la facultad de exportar su información desde los módulos habilitados. En caso de terminación definitiva del servicio o no renovación posterior a los plazos de gracia establecidos, <strong>EL CLIENTE</strong> podrá solicitar la entrega íntegra de su base de datos y la posterior destrucción y borrado seguro de su dataset dedicado, tras lo cual <strong>WESBYTE</strong> emitirá el acta de eliminación correspondiente.
+            </p>
+
+            <h5 class="fw-bold text-dark mt-4 mb-2"><i class="ti ti-calendar-Stats me-1 text-indigo"></i> CLÁUSULA OCTAVA: VIGENCIA, SUPERVIVENCIA Y NDA CORPORATIVO PROPIO</h5>
+            <p class="mb-0">
+              El presente Acuerdo entra en vigor desde el instante de creación de la cuenta (incluyendo cuentas en modalidad <strong>Plan Demo de 5 días</strong>) y permanecerá vigente durante toda la relación contractual, <strong>sobreviviendo por un período adicional de cinco (5) años</strong> posteriores a la finalización del servicio.<br>
+              <em>Nota legal adicional:</em> Si el departamento jurídico o de cumplimiento de <strong>EL CLIENTE</strong> requiere la suscripción adicional de un formato NDA corporativo propio con firma electrónica, podrá remitirlo a <a href="mailto:{{ soporte_email or 'soporte@wesbyte.app' }}" class="fw-bold">{{ soporte_email or 'soporte@wesbyte.app' }}</a> para su firma inmediata por nuestro representante legal.
+            </p>
+
+            <!-- Sello de garantía inferior -->
+            <div class="mt-4 pt-3 border-top d-flex flex-wrap justify-content-between align-items-center gap-3 small text-muted">
+              <div class="d-flex align-items-center gap-2">
+                <i class="ti ti-certificate fs-2 text-success"></i>
+                <span>Documento validado digitalmente por la Arquitectura de Seguridad y Cumplimiento de <strong>Wesbyte</strong>.</span>
+              </div>
+              <div class="fw-bold text-dark">Quito / Guayaquil, República del Ecuador · 2026</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer bg-white border-top px-4 py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <button type="button" class="btn btn-outline-secondary fw-bold" onclick="imprimirAcuerdoConfidencialidad()">
+            <i class="ti ti-printer me-1"></i> Imprimir / Guardar en PDF
+          </button>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-link text-muted" data-bs-dismiss="modal">Cerrar</button>
+            <button type="button" class="btn btn-primary fw-bold px-4" onclick="aceptarAcuerdoDesdeModal()">
+              <i class="ti ti-circle-check me-1"></i> He leído y acepto el Acuerdo
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function abrirModalAcuerdoConfidencialidad() {
+      const empInput = document.getElementById("regNombreEmpresa");
+      const nomInput = document.getElementById("regNombresCompletos");
+      const targetEl = document.getElementById("ndaNombreClienteDinamico");
+      if (targetEl) {
+        const emp = empInput && empInput.value.trim() ? empInput.value.trim().toUpperCase() : "";
+        const nom = nomInput && nomInput.value.trim() ? nomInput.value.trim().toUpperCase() : "";
+        if (emp && nom) {
+          targetEl.textContent = `${emp} (representada por ${nom})`;
+        } else if (emp) {
+          targetEl.textContent = emp;
+        } else {
+          targetEl.textContent = "EL CLIENTE / LA AGENCIA CONTRATANTE";
+        }
+      }
+      const el = document.getElementById("modalAcuerdoConfidencialidad");
+      if (el && typeof bootstrap !== "undefined") {
+        bootstrap.Modal.getOrCreateInstance(el).show();
+      }
+    }
+
+    function aceptarAcuerdoDesdeModal() {
+      const chk = document.getElementById("regAceptaNda");
+      if (chk) {
+        chk.checked = true;
+        chk.dispatchEvent(new Event("change"));
+      }
+      const el = document.getElementById("modalAcuerdoConfidencialidad");
+      if (el && typeof bootstrap !== "undefined") {
+        bootstrap.Modal.getInstance(el)?.hide();
+      }
+    }
+
+    function imprimirAcuerdoConfidencialidad() {
+      const content = document.getElementById("ndaPrintableContent");
+      if (!content) return;
+      const win = window.open("", "_blank", "width=920,height=780");
+      if (!win) return;
+      win.document.write(`
+        <!doctype html>
+        <html lang="es">
+        <head>
+          <meta charset="utf-8">
+          <title>Acuerdo de Confidencialidad (NDA) - Wesbyte</title>
+          <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/css/tabler.min.css"/>
+          <style>body{background:#fff !important;padding:24px;color:#0f172a;font-size:13px;line-height:1.65;}</style>
+        </head>
+        <body>${content.innerHTML}</body>
+        </html>
+      `);
+      win.document.close();
+      setTimeout(() => { win.focus(); win.print(); }, 350);
+    }
+  </script>
 
   <script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/js/tabler.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>

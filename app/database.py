@@ -449,7 +449,15 @@ def init_wesbytes_schema_and_seeds() -> None:
     """)
 
     ensure_columns_exist(WESBYTES_DATASET_ID, "plantillas_notificaciones", {"es_html": "BOOL"})
-    ensure_columns_exist(WESBYTES_DATASET_ID, "clientes", {"logo": "STRING"})
+    ensure_columns_exist(
+        WESBYTES_DATASET_ID,
+        "clientes",
+        {
+            "logo": "STRING",
+            "es_demo": "BOOL",
+            "fecha_fin_demo": "TIMESTAMP",
+        },
+    )
     try:
         execute_query(f"ALTER TABLE `{dataset_ref}.clientes` DROP COLUMN IF EXISTS nombre_broker")
     except Exception:

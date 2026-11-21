@@ -574,6 +574,51 @@
 </section>
 
 <div class="container-xl" style="margin-top:-2rem;position:relative;z-index:2;">
+  {% if d.es_demo %}
+  <!-- BANNER DE PLAN DEMO (5 DÍAS) -->
+  {% set pct_demo_cli = [100, ((d.clientes_usados or 0) * 100 / (d.limite_clientes or 10)) | round | int] | min %}
+  {% if d.demo_expirada %}
+  <div class="alert alert-danger border-0 shadow-sm mb-4 d-flex flex-wrap align-items-center justify-content-between gap-3" style="border-radius:18px;padding:1rem 1.35rem;" role="alert">
+    <div class="d-flex align-items-center gap-3">
+      <span class="avatar avatar-md bg-danger text-white rounded-circle"><i class="ti ti-lock-exclamation fs-2"></i></span>
+      <div>
+        <div class="fw-bold fs-4">Tu Plan Demo de 5 días ha expirado</div>
+        <div class="small text-muted">
+          Has utilizado <strong>{{ d.clientes_usados }} / {{ d.limite_clientes or 10 }} clientes registrados</strong>. Activa un plan comercial para desbloquear todas las funciones y continuar operando.
+        </div>
+      </div>
+    </div>
+    <button type="button" class="btn btn-danger fw-bold px-4" onclick="document.getElementById('tab-suscripcion-btn')?.click()">
+      <i class="ti ti-rocket me-1"></i> Activar un plan
+    </button>
+  </div>
+  {% else %}
+  <div class="card border-0 shadow-sm mb-4" style="border-radius:18px;background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%);border-left:4px solid #f59e0b !important;">
+    <div class="card-body py-3 px-4 d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div class="d-flex align-items-center gap-3 flex-wrap">
+        <span class="avatar avatar-md bg-warning text-dark rounded-circle fw-bold"><i class="ti ti-clock-hour-4 fs-2"></i></span>
+        <div>
+          <div class="fw-bold text-dark fs-4">
+            Plan Demo: te quedan {{ d.dias_restantes }} {{ 'día' if d.dias_restantes == 1 else 'días' }}
+          </div>
+          <div class="d-flex align-items-center gap-3 flex-wrap mt-1">
+            <span class="small text-muted fw-semibold">
+              <i class="ti ti-users me-1"></i> {{ d.clientes_usados }} / {{ d.limite_clientes or 10 }} clientes registrados
+            </span>
+            <div class="progress" style="width:120px;height:6px;background:rgba(0,0,0,0.08);">
+              <div class="progress-bar bg-warning" role="progressbar" style="width:{{ pct_demo_cli }}%;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button type="button" class="btn btn-warning fw-bold px-3" onclick="document.getElementById('tab-suscripcion-btn')?.click()">
+        <i class="ti ti-sparkles me-1"></i> Mejorar plan
+      </button>
+    </div>
+  </div>
+  {% endif %}
+  {% endif %}
+
   <!-- KPIs CLIENTE -->
   <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
@@ -679,7 +724,18 @@
                 <li><span class="dot"><i class="ti ti-user-check"></i></span><div class="fw-bold">Registro completado</div><div class="small text-muted">{{ d.cliente.created_at.strftime('%d/%m/%Y') if d.cliente.created_at else '' }}</div></li>
                 <li><span class="dot"><i class="ti ti-credit-card"></i></span><div class="fw-bold">Pago verificado</div><div class="small text-muted">{% if d.sus %}{% if d.sus.modalidad_pago == 'pago_unico_3_years' %}Pago Único · 3 Años (-15%){% elif d.sus.modalidad_pago == 'pago_unico_2_years' %}Pago Único · 2 Años (-10%){% else %}Pago Único Anual{% endif %} · ${{ "%.2f"|format(d.sus.monto_total_cobrado) }}{% endif %}</div></li>
                 <li><span class="dot"><i class="ti ti-database"></i></span><div class="fw-bold">Base de datos creada</div><div class="small text-muted">Privada y lista para usar</div></li>
-                <li><span class="dot"><i class="ti ti-shield-check"></i></span><div class="fw-bold">Acuerdo de confidencialidad vigente</div><div class="small text-muted">{% if d.cliente.requiere_nda_personalizado %}NDA propio en revisión con nuestro equipo{% else %}Aceptado{% endif %}</div></li>
+                <li>
+                  <span class="dot"><i class="ti ti-shield-check"></i></span>
+                  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <div>
+                      <div class="fw-bold">Acuerdo de confidencialidad vigente</div>
+                      <div class="small text-muted">{% if d.cliente.requiere_nda_personalizado %}NDA propio en revisión con nuestro equipo{% else %}Aceptado · Código NDA-WB-EC-2026{% endif %}</div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary fw-bold" style="border-radius:8px;" onclick="abrirModalAcuerdoConfidencialidad()">
+                      <i class="ti ti-file-certificate me-1"></i> Ver Acuerdo (NDA)
+                    </button>
+                  </div>
+                </li>
                 <li><span class="dot {% if d.total_clientes == 0 %}pending{% endif %}"><i class="ti ti-upload"></i></span><div class="fw-bold">Carga de tus clientes</div><div class="small text-muted">{% if d.total_clientes == 0 %}Pendiente: carga tus clientes en la aplicación{% else %}{{ d.total_clientes }} clientes cargados{% endif %}</div></li>
                 <li><span class="dot {% if d.consumos.whatsapp.usado == 0 and d.consumos.emails.usado == 0 %}pending{% endif %}"><i class="ti ti-bolt"></i></span><div class="fw-bold">Automatizaciones en marcha</div><div class="small text-muted">{% if d.consumos.whatsapp.usado == 0 and d.consumos.emails.usado == 0 %}Se activan al cargar tus datos{% else %}Enviando alertas y correos{% endif %}</div></li>
               </ul>
@@ -1492,6 +1548,49 @@
     </div>
   </div>
 </div>
+
+<!-- MODAL ENVIAR PRUEBA DE NOTIFICACIÓN -->
+<div class="modal modal-blur fade" id="modalProbarNotificacion" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:20px;overflow:hidden;">
+      <div class="modal-header bg-dark text-white py-3">
+        <h4 class="modal-title mb-0 fw-bold" id="modalPruebaTitulo">
+          <i class="ti ti-send me-1"></i> Enviar prueba de notificación
+        </h4>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <form onsubmit="enviarPruebaNotificacion(event)">
+        <input type="hidden" id="pruebaNotifCodigo">
+        <input type="hidden" id="pruebaNotifCanal">
+        <div class="modal-body p-4">
+          <div class="mb-3">
+            <div class="small text-muted mb-1">Plantilla seleccionada</div>
+            <div class="fw-bold text-dark fs-4" id="pruebaNotifNombre">—</div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-bold" id="pruebaNotifDestinoLabel" for="pruebaNotifDestino">Destino</label>
+            <input type="text" class="form-control" id="pruebaNotifDestino" required>
+            <div class="form-text" id="pruebaNotifDestinoHelp"></div>
+          </div>
+
+          <div class="alert alert-info py-2 px-3 mb-0 small d-flex flex-column gap-1" style="border-radius:12px;">
+            <div><i class="ti ti-info-circle me-1"></i> <strong>Se enviará con datos de ejemplo</strong> usando el formato que tienes actualmente en pantalla.</div>
+            <div id="pruebaNotifPdfBadge" class="text-primary fw-semibold" style="display:none;">
+              <i class="ti ti-file-type-pdf me-1"></i> Incluye un PDF de prueba adjunto
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer bg-light p-3">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary fw-bold px-4" id="btnEnviarPruebaNotif">
+            <i class="ti ti-send me-1"></i> Enviar prueba
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 {% endif %}
 {% endblock %}
 
@@ -2229,12 +2328,19 @@
                   </button>
                   ` : ""}
                 </div>
-                <button type="button"
-                        class="btn btn-primary fw-bold px-4"
-                        id="btn_save_tpl_${canal}_${n.codigo}"
-                        onclick="guardarPlantillaNotificacion('${n.codigo}', '${canal}')">
-                  <i class="ti ti-device-floppy me-1"></i> Guardar formato de ${isEmail ? "Correo" : "WhatsApp"}
-                </button>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <button type="button"
+                          class="btn btn-outline-primary fw-bold px-3"
+                          onclick="abrirModalPruebaNotificacion('${n.codigo}', '${canal}')">
+                    <i class="ti ti-send me-1"></i> Enviar prueba
+                  </button>
+                  <button type="button"
+                          class="btn btn-primary fw-bold px-4"
+                          id="btn_save_tpl_${canal}_${n.codigo}"
+                          onclick="guardarPlantillaNotificacion('${n.codigo}', '${canal}')">
+                    <i class="ti ti-device-floppy me-1"></i> Guardar formato de ${isEmail ? "Correo" : "WhatsApp"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -2323,6 +2429,95 @@
       Swal.fire("¡Preferencias guardadas!", json.message, "success");
     } catch (err) {
       Swal.fire("Error", err.message, "error");
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = orig;
+    }
+  }
+
+  const NOTIF_CON_PDF = new Set(["envio_poliza", "condiciones_renovacion"]);
+
+  function abrirModalPruebaNotificacion(codigo, canal) {
+    const item = NOTIF_DATA.find(x => x.codigo === codigo);
+    const isEmail = canal === "email";
+    document.getElementById("pruebaNotifCodigo").value = codigo;
+    document.getElementById("pruebaNotifCanal").value = canal;
+    document.getElementById("modalPruebaTitulo").innerHTML = isEmail
+      ? '<i class="ti ti-mail me-1"></i> Enviar prueba por Correo'
+      : '<i class="ti ti-brand-whatsapp me-1"></i> Enviar prueba por WhatsApp';
+    document.getElementById("pruebaNotifNombre").textContent = item ? `${item.orden}. ${item.nombre}` : codigo;
+
+    const inputEl = document.getElementById("pruebaNotifDestino");
+    const labelEl = document.getElementById("pruebaNotifDestinoLabel");
+    const helpEl = document.getElementById("pruebaNotifDestinoHelp");
+    inputEl.value = "";
+    if (isEmail) {
+      inputEl.type = "email";
+      inputEl.placeholder = "ejemplo@correo.com";
+      labelEl.textContent = "Correo electrónico de destino *";
+      helpEl.textContent = "Ingresa el correo donde deseas recibir la vista previa.";
+    } else {
+      inputEl.type = "tel";
+      inputEl.placeholder = "593991234567";
+      labelEl.textContent = "Número de WhatsApp (con código de país) *";
+      helpEl.textContent = "Ejemplo para Ecuador: 593991234567 (sin el signo +).";
+    }
+
+    const pdfBadge = document.getElementById("pruebaNotifPdfBadge");
+    if (pdfBadge) {
+      pdfBadge.style.display = NOTIF_CON_PDF.has(codigo) ? "block" : "none";
+    }
+
+    const modalEl = document.getElementById("modalProbarNotificacion");
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+    setTimeout(() => inputEl.focus(), 200);
+  }
+
+  async function enviarPruebaNotificacion(event) {
+    event.preventDefault();
+    const codigo = document.getElementById("pruebaNotifCodigo").value;
+    const canal = document.getElementById("pruebaNotifCanal").value;
+    const destino = document.getElementById("pruebaNotifDestino").value.trim();
+    const msgEl = document.getElementById(`tpl_msg_${canal}_${codigo}`);
+    const asuEl = document.getElementById(`tpl_asunto_email_${codigo}`);
+    const itemCurr = NOTIF_DATA.find(x => x.codigo === codigo);
+    const esHtmlVal = canal === "email" && Boolean(itemCurr && itemCurr.email_es_html);
+
+    const btn = document.getElementById("btnEnviarPruebaNotif");
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = "<span class='spinner-border spinner-border-sm me-2'></span> Enviando...";
+
+    try {
+      const resp = await fetch("/api/notificaciones/plantillas/probar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          notificacion_codigo: codigo,
+          canal: canal,
+          destino: destino,
+          asunto: asuEl ? asuEl.value : null,
+          mensaje: msgEl ? msgEl.value : null,
+          es_html: esHtmlVal
+        })
+      });
+      const json = await resp.json();
+      if (!resp.ok || !json.success) {
+        throw new Error(json.detail || "No se pudo enviar la prueba.");
+      }
+      bootstrap.Modal.getInstance(document.getElementById("modalProbarNotificacion"))?.hide();
+      Swal.fire({
+        toast: true,
+        position: "top-end",
+        icon: "success",
+        title: json.message || "Prueba enviada correctamente",
+        showConfirmButton: false,
+        timer: 4500,
+        timerProgressBar: true
+      });
+    } catch (err) {
+      Swal.fire("Error al enviar prueba", err.message, "error");
     } finally {
       btn.disabled = false;
       btn.innerHTML = orig;

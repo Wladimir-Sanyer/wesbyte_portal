@@ -8,6 +8,8 @@ from app.config import (
     BIGQUERY_PROJECT_ID,
     WESBYTES_DATASET_ID,
     PLANES_OFICIALES,
+    DEMO_PLAN_CONFIG,
+    ECUADOR_TZ,
     calcular_montos_periodo,
     calcular_plan_personalizado,
     normalizar_periodo,
@@ -34,6 +36,8 @@ def get_plan_by_code_or_id(
     y lo registra en `wesbyte.administracion.planes` si es personalizado.
     """
     code_upper = (plan_codigo or "SUPER_GOLD").strip().upper()
+    if code_upper == "DEMO":
+        return DEMO_PLAN_CONFIG.copy()
     for p in PLANES_OFICIALES:
         if p["codigo"] == code_upper or str(p.get("slug", "")).upper() == code_upper or str(p["id"]) == code_upper:
             return p.copy()
@@ -144,13 +148,18 @@ def register_tenant_and_user(payload: Dict[str, Any]) -> Dict[str, Any]:
         dataset_id = f"{dataset_id}_empresa"
 
     plan_codigo = str(payload.get("plan_codigo") or payload.get("plan") or "SUPER_GOLD")
+    es_demo = plan_codigo.strip().upper() == "DEMO" or bool(payload.get("es_demo", False))
+    if es_demo:
+        plan_codigo = "DEMO"
     custom_params = payload.get("custom_params")
     plan = get_plan_by_code_or_id(plan_codigo, custom_params)
 
     cliente_id = get_next_id("clientes", WESBYTES_DATASET_ID)
     usuario_admin_id = get_next_id("usuarios", WESBYTES_DATASET_ID)
     pw_hash = hash_password(password)
-    now_ts = datetime.datetime.now(datetime.timezone.utc)
+    now_ec = datetime.datetime.now(ECUADOR_TZ)
+    now_ts = now_ec.astimezone(datetime.timezone.utc)
+    fecha_fin_demo = (now_ec + datetime.timedelta(days=5)).astimezone(datetime.timezone.utc) if es_demo else None
 
     # 1. Insertar en wesbyte.administracion.clientes
     cliente_row = {
@@ -164,14 +173,16 @@ def register_tenant_and_user(payload: Dict[str, Any]) -> Dict[str, Any]:
         "ciudad": ciudad,
         "dataset_id": dataset_id,
         "proyecto": BIGQUERY_PROJECT_ID,
-        "estado": "pendiente_pago",
-        "max_usuarios": int(plan["max_usuarios"]),
+        "estado": "activo" if es_demo else "pendiente_pago",
+        "max_usuarios": 1 if es_demo else int(plan["max_usuarios"]),
         "limite_mensual_emails": int(plan["limite_mensual_emails"]),
         "limite_mensual_whatsapp": int(plan["limite_mensual_whatsapp"]),
         "limite_mensual_api_ecuador": int(plan["limite_mensual_api_ecuador"]),
         "acuerdo_confidencialidad_aceptado": True,
         "fecha_acuerdo_confidencialidad": now_ts,
         "requiere_nda_personalizado": requiere_nda_personalizado,
+        "es_demo": es_demo,
+        "fecha_fin_demo": fecha_fin_demo,
         "activo": True,
         "created_at": now_ts,
     }
@@ -196,8 +207,16 @@ def register_tenant_and_user(payload: Dict[str, Any]) -> Dict[str, Any]:
     ]
     append_rows(WESBYTES_DATASET_ID, "usuarios", usuarios_rows)
 
+    if es_demo:
+        try:
+            clone_broker_pmp_dataset_empty(dataset_id)
+        except Exception as exc:
+            logger.warning(f"Error clonando dataset demo {dataset_id}: {exc}")
+
     return {
         "cliente_id": cliente_id,
+        "es_demo": es_demo,
+        "fecha_fin_demo": fecha_fin_demo.isoformat() if fecha_fin_demo else None,
         "usuario_id": usuario_admin_id,
         "nombre_empresa": nombre_empresa,
         "nombres_completos": nombres_completos,
@@ -487,7 +506,7 @@ def complete_payment_and_provision(
     try:
         execute_query(f"""
             UPDATE `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.clientes`
-            SET estado = 'activo', activo = TRUE
+            SET estado = 'activo', activo = TRUE, es_demo = FALSE
             WHERE id = {cliente_id}
         """)
     except Exception as exc:

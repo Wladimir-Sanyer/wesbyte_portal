@@ -14,12 +14,15 @@ from fastapi import APIRouter, Body, File, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from google.cloud import bigquery
+from pydantic import BaseModel, Field
 
 from app.config import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     ALGORITHM,
     APP_VERSION,
     BIGQUERY_PROJECT_ID,
+    DEMO_PLAN_CONFIG,
+    ECUADOR_TZ,
     PLANES_OFICIALES,
     SECRET_KEY,
     SOPORTE_EMAIL,
@@ -36,6 +39,7 @@ from app.services.notificaciones_config_service import (
     save_cliente_notificaciones_habilitadas,
     save_cliente_plantilla,
 )
+from app.services.test_notification_service import send_test_notification
 from app.services.whatsapp_client import (
     WhatsAppClient,
     WhatsAppClientError,
@@ -691,6 +695,78 @@ def _superadmin_dashboard() -> Dict[str, Any]:
     }
 
 
+def _compute_demo_status(
+    cliente: Dict[str, Any],
+    plan: Optional[Dict[str, Any]] = None,
+    sus: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Calcula el estado del Plan Demo (5 días) usando la zona horaria America/Guayaquil."""
+    now_ec = datetime.datetime.now(ECUADOR_TZ)
+    today_ec = now_ec.date()
+
+    plan_cod = str((plan or {}).get("codigo") or "").strip().upper()
+    estado_cli = str(cliente.get("estado") or "").strip().lower()
+    raw_es_demo = bool(cliente.get("es_demo")) or plan_cod == "DEMO" or estado_cli == "demo"
+
+    # Si tiene una suscripción paga activa vigente, ya no está en demo
+    tiene_sus_paga = False
+    if sus:
+        sus_estado = str(sus.get("estado") or "").lower()
+        sus_fin = sus.get("fecha_fin")
+        if sus_estado in ("activa", "por_vencer") and sus_fin and sus_fin >= today_ec:
+            tiene_sus_paga = True
+
+    es_demo = raw_es_demo and not tiene_sus_paga
+    if not es_demo:
+        return {
+            "es_demo": False,
+            "demo_expirada": False,
+            "fecha_fin_demo": None,
+            "dias_restantes": None,
+            "limite_clientes": None,
+        }
+
+    raw_fin = cliente.get("fecha_fin_demo")
+    if isinstance(raw_fin, datetime.datetime):
+        fin_ec = raw_fin.replace(tzinfo=datetime.timezone.utc).astimezone(ECUADOR_TZ) if raw_fin.tzinfo is None else raw_fin.astimezone(ECUADOR_TZ)
+    else:
+        created = cliente.get("created_at")
+        if isinstance(created, datetime.datetime):
+            c_ec = created.replace(tzinfo=datetime.timezone.utc).astimezone(ECUADOR_TZ) if created.tzinfo is None else created.astimezone(ECUADOR_TZ)
+            fin_ec = c_ec + datetime.timedelta(days=5)
+        else:
+            fin_ec = now_ec + datetime.timedelta(days=5)
+
+    demo_expirada = now_ec > fin_ec
+    dias_restantes = 0 if demo_expirada else max(0, (fin_ec.date() - today_ec).days)
+
+    return {
+        "es_demo": True,
+        "demo_expirada": demo_expirada,
+        "fecha_fin_demo": fin_ec.isoformat(),
+        "dias_restantes": dias_restantes,
+        "limite_clientes": int(DEMO_PLAN_CONFIG["limite_clientes"]),
+    }
+
+
+def _assert_demo_not_expired_by_cid(cid: int) -> Dict[str, Any]:
+    cp = [bigquery.ScalarQueryParameter("cid", "INT64", cid)]
+    cli = _rows(f"SELECT * FROM `{P}.{W}.clientes` WHERE id=@cid LIMIT 1", cp)
+    if not cli:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada.")
+    cliente = cli[0]
+    plan = (_rows(f"SELECT * FROM `{P}.{W}.planes` WHERE id=@plan",
+                  [bigquery.ScalarQueryParameter("plan", "INT64", int(cliente.get("plan_id") or 0))]) or [{}])[0]
+    sus = (_rows(f"SELECT * FROM `{P}.{W}.suscripciones` WHERE cliente_id=@cid ORDER BY id DESC LIMIT 1", cp) or [None])[0]
+    demo = _compute_demo_status(cliente, plan, sus)
+    if demo["es_demo"] and demo["demo_expirada"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Tu plan Demo de 5 días ha expirado. Activa un plan para continuar realizando cambios.",
+        )
+    return {"cliente": cliente, "plan": plan, "sus": sus, "demo": demo}
+
+
 def _dashboard(cid: int) -> Optional[Dict[str, Any]]:
     cp = [bigquery.ScalarQueryParameter("cid", "INT64", cid)]
     cli = _rows(f"SELECT * FROM `{P}.{W}.clientes` WHERE id=@cid LIMIT 1", cp)
@@ -795,7 +871,16 @@ def _dashboard(cid: int) -> Optional[Dict[str, Any]]:
 
     dias_restantes = None
     if sus and sus.get("fecha_fin"):
-        dias_restantes = (sus["fecha_fin"] - datetime.date.today()).days
+        dias_restantes = (sus["fecha_fin"] - datetime.datetime.now(ECUADOR_TZ).date()).days
+
+    demo_info = _compute_demo_status(cliente, plan, sus)
+    if demo_info["es_demo"]:
+        dias_restantes = demo_info["dias_restantes"]
+        max_usr = 1
+        es_plan_prime = True
+        puede_crear_usuarios = False
+        if not plan:
+            plan = DEMO_PLAN_CONFIG.copy()
 
     # Logs del cliente
     logs_wa = _rows(f"SELECT telefono_destino, estado, error_detalle, fecha_envio AS created_at FROM `{P}.{W}.logs_whatsapp` WHERE cliente_id=@cid ORDER BY fecha_envio DESC LIMIT 10", cp)
@@ -866,6 +951,11 @@ def _dashboard(cid: int) -> Optional[Dict[str, Any]]:
         "limite_alcanzado": limite_alcanzado,
         "puede_crear_usuarios": puede_crear_usuarios,
         "consumos": consumos, "registros": registros, "total_clientes": total_clientes,
+        "clientes_usados": total_clientes,
+        "limite_clientes": demo_info["limite_clientes"],
+        "es_demo": demo_info["es_demo"],
+        "demo_expirada": demo_info["demo_expirada"],
+        "fecha_fin_demo": demo_info["fecha_fin_demo"],
         "total_registros": sum(registros.values()), "dias_restantes": dias_restantes,
         "periodo": periodo,
         "ds_bytes": ds_bytes,
@@ -1197,26 +1287,34 @@ async def api_crear_usuario_app(request: Request, payload: Dict[str, Any] = Body
     if cliente_id <= 0:
         raise HTTPException(status_code=403, detail="Solo los clientes autenticados pueden crear usuarios para su empresa.")
 
-    # 1. Obtener datos del cliente y su plan
-    cp = [bigquery.ScalarQueryParameter("cid", "INT64", cliente_id)]
-    df_cli = _rows(f"SELECT id, nombre, dataset_id, max_usuarios, estado, plan_id FROM `{P}.{W}.clientes` WHERE id=@cid", cp)
-    if not df_cli:
-        raise HTTPException(status_code=404, detail="Empresa no encontrada.")
-    cli_row = df_cli[0]
-    if cli_row.get("estado") != "activo":
+    # 1. Obtener datos del cliente y su plan (validando Demo)
+    demo_ctx = _assert_demo_not_expired_by_cid(cliente_id)
+    cli_row = demo_ctx["cliente"]
+    if cli_row.get("estado") not in ("activo", "demo"):
         raise HTTPException(status_code=403, detail="Tu cuenta se encuentra inactiva.")
 
-    max_usr = int(cli_row.get("max_usuarios") or 1)
+    max_usr = 1 if demo_ctx["demo"]["es_demo"] else int(cli_row.get("max_usuarios") or 1)
     dataset_id = str(cli_row.get("dataset_id")).strip()
 
     # Validación estricta según el plan del usuario
+    if demo_ctx["demo"]["es_demo"]:
+        df_count = _rows(f"SELECT COUNT(1) AS c FROM `{P}.{W}.usuarios_app` WHERE cliente_id=@cid AND activo=TRUE", [bigquery.ScalarQueryParameter("cid", "INT64", cliente_id)])
+        df_count_leg = _rows(f"SELECT COUNT(1) AS c FROM `{P}.{W}.usuarios` WHERE cliente_id=@cid AND activo=TRUE", [bigquery.ScalarQueryParameter("cid", "INT64", cliente_id)])
+        actuales_demo = max(
+            int(df_count[0]["c"]) if df_count else 0,
+            int(df_count_leg[0]["c"]) if df_count_leg else 0,
+        )
+        if actuales_demo >= 1:
+            raise HTTPException(status_code=403, detail="El plan Demo solo permite 1 usuario")
+
     if max_usr <= 1:
         raise HTTPException(
-            status_code=400,
-            detail="Tu Plan Prime solo incluye 1 usuario administrador. Para añadir supervisores, actualizadores o visualizadores para tu equipo, debes mejorar tu plan a Medium o Super Gold, o contratar usuarios adicionales."
+            status_code=403 if demo_ctx["demo"]["es_demo"] else 400,
+            detail="El plan Demo solo permite 1 usuario" if demo_ctx["demo"]["es_demo"] else "Tu Plan Prime solo incluye 1 usuario administrador. Para añadir supervisores, actualizadores o visualizadores para tu equipo, debes mejorar tu plan a Medium o Super Gold, o contratar usuarios adicionales."
         )
 
     # Contar usuarios activos en usuarios_app
+    cp = [bigquery.ScalarQueryParameter("cid", "INT64", cliente_id)]
     df_count = _rows(f"SELECT COUNT(1) AS c FROM `{P}.{W}.usuarios_app` WHERE cliente_id=@cid AND activo=TRUE", cp)
     actuales = int(df_count[0]["c"]) if df_count else 0
     if actuales >= max_usr:
@@ -1673,6 +1771,67 @@ async def api_whatsapp_conectar(request: Request):
         raise HTTPException(status_code=502, detail="No se pudo generar el código QR con el servicio de WhatsApp.")
 
 
+@router.get("/api/portal/plan-estado")
+async def api_portal_plan_estado(request: Request):
+    """Retorna el estado actual del plan (incluyendo modo DEMO, días restantes y clientes usados)."""
+    sesion = get_sesion(request)
+    if not sesion:
+        raise HTTPException(status_code=401, detail="Sesión expirada.")
+    cliente_id = int(sesion.get("cid") or sesion.get("cliente_id") or 0)
+    if cliente_id <= 0:
+        return {"es_demo": False, "demo_expirada": False, "dias_restantes": None, "clientes_usados": 0, "limite_clientes": None}
+    dash = _dashboard(cliente_id)
+    if not dash:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada.")
+    return {
+        "es_demo": dash["es_demo"],
+        "demo_expirada": dash["demo_expirada"],
+        "fecha_fin_demo": dash["fecha_fin_demo"],
+        "dias_restantes": dash["dias_restantes"],
+        "clientes_usados": dash["clientes_usados"],
+        "limite_clientes": dash["limite_clientes"],
+        "plan_nombre": dash["plan"].get("nombre") or "Plan Wesbyte",
+    }
+
+
+class TestNotificationRequest(BaseModel):
+    notificacion_codigo: str = Field(..., min_length=1)
+    canal: str = Field(..., min_length=1)
+    destino: str = Field(..., min_length=1)
+    asunto: Optional[str] = None
+    mensaje: Optional[str] = None
+    es_html: Optional[bool] = None
+
+
+@router.post("/api/notificaciones/plantillas/probar")
+async def api_probar_plantilla_notificacion(request: Request, payload: TestNotificationRequest):
+    """Envía una notificación de prueba por correo (Resend) o WhatsApp (Evolution API) con datos ficticios."""
+    sesion = get_sesion(request)
+    if not sesion:
+        raise HTTPException(status_code=401, detail="Sesión expirada.")
+    cliente_id = int(sesion.get("cid") or sesion.get("cliente_id") or 0)
+    if cliente_id <= 0:
+        raise HTTPException(status_code=403, detail="Solo clientes autenticados pueden probar plantillas.")
+
+    _assert_demo_not_expired_by_cid(cliente_id)
+
+    try:
+        result = await send_test_notification(
+            cliente_id=cliente_id,
+            notificacion_codigo=payload.notificacion_codigo,
+            canal=payload.canal,
+            destino=payload.destino,
+            asunto=payload.asunto,
+            mensaje=payload.mensaje,
+            es_html=payload.es_html,
+        )
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 @router.post("/api/notificaciones/plantillas/guardar")
 async def api_guardar_plantilla_notificacion(request: Request, payload: Dict[str, Any] = Body(...)):
     """Guarda el formato personalizado de correo o WhatsApp de una notificación en plantillas_notificaciones."""
@@ -1682,6 +1841,7 @@ async def api_guardar_plantilla_notificacion(request: Request, payload: Dict[str
     cliente_id = int(sesion.get("cid") or sesion.get("cliente_id") or 0)
     if cliente_id <= 0:
         raise HTTPException(status_code=403, detail="Solo clientes autenticados pueden configurar plantillas.")
+    _assert_demo_not_expired_by_cid(cliente_id)
 
     try:
         save_cliente_plantilla(

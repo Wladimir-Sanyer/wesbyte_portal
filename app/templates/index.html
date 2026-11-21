@@ -16,13 +16,18 @@
           Wesbyte trabaja 24/7 por ti: <strong class="text-white">avisa a tus clientes por WhatsApp</strong>, envía correos personalizados, consulta datos del Estado y ordena todo en tu propia base de datos.
         </p>
         <div class="d-flex flex-wrap gap-3 mb-4">
-          <a href="#planes-grid" class="btn btn-warm btn-lg px-4"><i class="ti ti-rocket me-2"></i> Quiero automatizar mi negocio</a>
+          <button type="button" class="btn btn-warm btn-lg px-4" onclick="abrirModalRegistro('DEMO')">
+            <i class="ti ti-player-play me-2"></i> Probar Demo gratis 5 días
+          </button>
+          <a href="#planes-grid" class="btn btn-ghost-saas btn-lg px-4"><i class="ti ti-rocket me-2"></i> Ver planes</a>
           <a href="#calculadora-custom" class="btn btn-ghost-saas btn-lg px-4"><i class="ti ti-calculator me-2"></i> Arma tu plan</a>
         </div>
         <div class="d-flex flex-wrap gap-2 mb-4">
           <span class="hero-chip"><i class="ti ti-brand-whatsapp text-success"></i> Alertas automáticas</span>
           <span class="hero-chip"><i class="ti ti-mail" style="color:#fcd34d"></i> Correos personalizados</span>
-          <span class="hero-chip"><i class="ti ti-lock" style="color:#c4b5fd"></i> Tu base de datos, solo tuya</span>
+          <button type="button" class="hero-chip border-0" style="cursor:pointer;" onclick="abrirModalAcuerdoConfidencialidad()">
+            <i class="ti ti-shield-check" style="color:#c4b5fd"></i> Acuerdo Oficial de Confidencialidad (NDA)
+          </button>
         </div>
 
         <div class="hero-upload-strip">
@@ -248,6 +253,28 @@
         <button type="button" id="btnPeriodo1" class="on" onclick="cambiarPeriodoPlanes('1_year')">1 Año</button>
         <button type="button" id="btnPeriodo2" onclick="cambiarPeriodoPlanes('2_years')">2 Años <span class="badge bg-success text-white ms-1">-10%</span></button>
         <button type="button" id="btnPeriodo3" onclick="cambiarPeriodoPlanes('3_years')">3 Años <span class="badge bg-warning text-dark ms-1">-15%</span></button>
+      </div>
+    </div>
+
+    <!-- BANNER PLAN DEMO GRATIS (5 DÍAS) -->
+    <div class="card border-0 shadow-lg mb-4" style="border-radius:20px;background:linear-gradient(135deg,rgba(245,158,11,0.16) 0%,rgba(79,70,229,0.22) 100%);border:1px solid rgba(251,191,36,0.45) !important;">
+      <div class="card-body p-4 d-flex flex-wrap align-items-center justify-content-between gap-3">
+        <div>
+          <span class="badge bg-warning text-dark fw-bold mb-2 px-3 py-1">
+            <i class="ti ti-gift me-1"></i> PRUEBA GRATUITA · SIN TARJETA
+          </span>
+          <h3 class="text-white fw-bold mb-1">Plan Demo gratis por 5 días</h3>
+          <div class="small" style="color:rgba(255,255,255,.85);">
+            <i class="ti ti-check text-warning me-1"></i> Hasta <strong>10 clientes</strong> registrados
+            <span class="mx-2">·</span>
+            <i class="ti ti-check text-warning me-1"></i> <strong>1 usuario</strong> activo
+            <span class="mx-2">·</span>
+            <i class="ti ti-check text-warning me-1"></i> Acceso inmediato al panel y pruebas de Correo / WhatsApp
+          </div>
+        </div>
+        <button type="button" class="btn btn-warm btn-lg fw-bold px-4" onclick="abrirModalRegistro('DEMO')">
+          <i class="ti ti-sparkles me-1"></i> Empezar Demo gratis
+        </button>
       </div>
     </div>
 
@@ -600,28 +627,43 @@
           </div>
 
           <div class="mt-4">
-            <label class="form-label fw-bold"><i class="ti ti-shield-lock me-1" style="color:#7c3aed"></i> Acuerdo de confidencialidad de tus datos</label>
-            <div class="nda-box mb-2">
-              <p class="mb-2"><strong>1. Tus datos son tuyos.</strong> Toda la información que guardes en tu base de datos dedicada es de tu exclusiva propiedad.</p>
-              <p class="mb-2"><strong>2. Reserva total.</strong> Wesbyte se compromete a no divulgar, ceder, vender ni usar tu información para fines distintos a prestarte el servicio.</p>
-              <p class="mb-0"><strong>3. ¿Tu empresa exige su propio NDA?</strong> Envíalo a <a href="mailto:{{ soporte_email }}" class="fw-bold">{{ soporte_email }}</a> y nuestro equipo lo firmará.</p>
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+              <label class="form-label fw-bold mb-0"><i class="ti ti-shield-lock me-1" style="color:#7c3aed"></i> Acuerdo Marco de Confidencialidad y Protección de Datos (NDA)</label>
+              <button type="button" class="btn btn-sm btn-primary fw-bold" style="border-radius:10px;" onclick="abrirModalAcuerdoConfidencialidad()">
+                <i class="ti ti-file-certificate me-1"></i> Leer Acuerdo Oficial Completo (NDA)
+              </button>
+            </div>
+            <div class="nda-box mb-2 p-3" style="border-left:4px solid #4f46e5;">
+              <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                <span class="badge bg-indigo-lt text-indigo fw-bold">DOCUMENTO LEGAL VINCULANTE · NDA-WB-EC-2026</span>
+                <span class="small text-muted fw-semibold"><i class="ti ti-scale me-1"></i> Cumplimiento LOPDP Ecuador</span>
+              </div>
+              <p class="mb-2 small"><strong>1. Propiedad Exclusiva y Dataset Dedicado (Cláusula 2):</strong> Tu cartera de clientes, pólizas, anexos PDF y registros se almacenan en un contenedor aislado en Google Cloud BigQuery exclusivo para tu agencia.</p>
+              <p class="mb-2 small"><strong>2. Reserva Absoluta y Prohibición de Comercialización (Cláusulas 3 y 4):</strong> Wesbyte garantiza bajo secreto empresarial no divulgar, ceder, vender ni contactar a tus clientes, ni compartir información con aseguradoras o terceros.</p>
+              <p class="mb-2 small"><strong>3. Seguridad, Cifrado y Supervivencia Legal por 5 años (Cláusulas 5 a 8):</strong> Protección TLS 1.3, cifrado AES-256 en reposo, trazabilidad de auditoría y vigencia extendida por 5 años adicionales.</p>
+              <p class="mb-0 small"><strong>4. ¿Tu departamento legal exige firmar tu propio formato NDA?</strong> Envíalo a <a href="mailto:{{ soporte_email }}" class="fw-bold">{{ soporte_email }}</a> y nuestro representante legal lo devolverá firmado.</p>
             </div>
             <label class="form-check mb-1">
               <input type="checkbox" class="form-check-input" id="regAceptaNda" required checked>
-              <span class="form-check-label small fw-semibold">He leído y acepto el acuerdo de confidencialidad.</span>
+              <span class="form-check-label small fw-semibold">
+                He leído y acepto el <a href="javascript:void(0)" class="fw-bold text-primary text-decoration-underline" onclick="abrirModalAcuerdoConfidencialidad()">Acuerdo Oficial de Confidencialidad y Custodia de Datos (NDA)</a>.
+              </span>
             </label>
             <label class="form-check">
               <input type="checkbox" class="form-check-input" id="regRequiereNdaFirmado">
-              <span class="form-check-label small text-muted">Enviaré mi propio NDA a <strong>{{ soporte_email }}</strong> para firma de Wesbyte.</span>
+              <span class="form-check-label small text-muted">Enviaré además el NDA propio de mi empresa a <strong>{{ soporte_email }}</strong> para firma de Wesbyte.</span>
             </label>
           </div>
         </div>
 
-        <div class="modal-footer bg-light d-flex justify-content-between">
+        <div class="modal-footer bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
           <button type="button" class="btn btn-link text-muted" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" id="btnSubmitRegistro" class="btn btn-warm px-4 py-2 fs-3" disabled>
-            Continuar al pago <i class="ti ti-arrow-right ms-1"></i>
-          </button>
+          <div class="d-flex align-items-center gap-3 flex-wrap">
+            <span id="regValidationHint" class="small text-danger fw-semibold"></span>
+            <button type="submit" id="btnSubmitRegistro" class="btn btn-warm px-4 py-2 fs-3">
+              Continuar al pago <i class="ti ti-arrow-right ms-1"></i>
+            </button>
+          </div>
         </div>
       </form>
     </div>
@@ -791,16 +833,21 @@
       if (mismatchEl) mismatchEl.classList.add("d-none");
     }
 
-    const esValido = (
-      empresa.length >= 2 &&
-      nombres.length >= 3 &&
-      ruc.length >= 10 &&
-      correo.includes("@") && correo.length >= 5 &&
-      celular.length >= 7 &&
-      pw.length >= 6 &&
-      pw === pwConf &&
-      aceptaNda === true
-    );
+    const faltantes = [];
+    if (empresa.length < 2) faltantes.push("Nombre de empresa (mín. 2 caracteres)");
+    if (nombres.length < 3) faltantes.push("Nombres completos (mín. 3 caracteres)");
+    if (ruc.length < 10) faltantes.push("RUC o Cédula (mín. 10 dígitos)");
+    if (!correo.includes("@") || correo.length < 5) faltantes.push("Correo válido");
+    if (celular.length < 7) faltantes.push("Celular (mín. 7 dígitos)");
+    if (pw.length < 6) faltantes.push("Contraseña (mín. 6 caracteres)");
+    if (pw !== pwConf) faltantes.push("Confirmar contraseña igual");
+    if (aceptaNda !== true) faltantes.push("Aceptar el acuerdo de confidencialidad");
+
+    const esValido = faltantes.length === 0;
+    const hintEl = document.getElementById("regValidationHint");
+    if (hintEl) {
+      hintEl.textContent = esValido ? "" : `Falta: ${faltantes[0]}`;
+    }
 
     const btn = document.getElementById("btnSubmitRegistro");
     if (btn) {
@@ -826,7 +873,20 @@
     if (periodo === "2_years") labelPeriodo = "2 Años (-10% OFF)";
     else if (periodo === "3_years") labelPeriodo = "3 Años (-15% OFF)";
 
-    if (codigoPlan === "CUSTOM") {
+    if (codigoPlan === "DEMO") {
+      nombre = "Plan Demo (5 días gratis)";
+      limites = "1 usuario activo · hasta 10 clientes registrados · Vigencia de 5 días · Sin tarjeta";
+      document.getElementById("modalPlanTitulo").textContent = "Crea tu cuenta · Plan Demo (5 días)";
+      document.getElementById("regResumenPlanNombre").textContent = "Plan Demo · 5 días gratis";
+      document.getElementById("regResumenPlanLimites").textContent = limites;
+      document.getElementById("regResumenPlanPrecio").textContent = "$0.00 USD";
+      document.getElementById("regResumenPlanSubprecio").textContent = "Activación inmediata · Gratis por 5 días";
+      const btnSubmit = document.getElementById("btnSubmitRegistro");
+      if (btnSubmit) btnSubmit.innerHTML = 'Activar Demo gratis <i class="ti ti-arrow-right ms-1"></i>';
+      validarFormularioCompleto();
+      bootstrap.Modal.getOrCreateInstance(document.getElementById("modalRegistro")).show();
+      return;
+    } else if (codigoPlan === "CUSTOM") {
       const c = ultimoCalculoCustom;
       limites = `${c.usuarios} usuarios · ${c.limite_mensual_whatsapp} WhatsApp · ${c.limite_mensual_emails} correos y notificaciones · ${c.limite_mensual_api_ecuador} consultas estatales / mes`;
       const mult = periodo === "3_years" ? 3 * 0.85 : (periodo === "2_years" ? 2 * 0.90 : 1);
@@ -850,6 +910,8 @@
     document.getElementById("regResumenPlanSubprecio").textContent = ahorro > 0
       ? `Equivalente a $${porMes.toFixed(2)}/mes · Ahorras $${ahorro.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
       : `Pago único (${labelPeriodo}) · Equivale a $${porMes.toFixed(2)}/mes`;
+    const btnSubmit = document.getElementById("btnSubmitRegistro");
+    if (btnSubmit) btnSubmit.innerHTML = 'Continuar al pago <i class="ti ti-arrow-right ms-1"></i>';
     validarFormularioCompleto();
     bootstrap.Modal.getOrCreateInstance(document.getElementById("modalRegistro")).show();
   }

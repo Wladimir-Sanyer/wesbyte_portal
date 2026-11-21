@@ -1,7 +1,23 @@
 import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
+
+ECUADOR_TZ = ZoneInfo("America/Guayaquil")
+
+DEMO_PLAN_CONFIG: Dict[str, Any] = {
+    "id": 0,
+    "codigo": "DEMO",
+    "slug": "demo",
+    "nombre": "Plan Demo (5 días)",
+    "duracion_dias": 5,
+    "max_usuarios": 1,
+    "limite_clientes": 10,
+    "limite_mensual_whatsapp": 15,
+    "limite_mensual_emails": 25,
+    "limite_mensual_api_ecuador": 20,
+}
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
