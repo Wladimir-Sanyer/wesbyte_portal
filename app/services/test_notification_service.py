@@ -15,6 +15,7 @@ from google.cloud import bigquery
 from app.config import BIGQUERY_PROJECT_ID, WESBYTES_DATASET_ID
 from app.database import get_bq_client
 from app.services.email_service import EmailService, EmailServiceError
+from app.services.google_drive_service import normalize_drive_logo_url
 from app.services.notificaciones_config_service import (
     CATALOGO_POR_CODIGO,
     PLANTILLA_VARIABLES,
@@ -141,16 +142,31 @@ def render_template_with_dummy_data(text: str, broker_nombre: str = "Seguros Ali
     return re.sub(r"\{([a-zA-Z0-9_]+)\}", _replace, text)
 
 
-def _wrap_test_email_html(body: str, broker_nombre: str, es_html: bool = False) -> str:
+def _wrap_test_email_html(
+    body: str,
+    broker_nombre: str,
+    es_html: bool = False,
+    logo_url: str = "",
+) -> str:
+    logo_norm = normalize_drive_logo_url(logo_url) if logo_url else ""
+    logo_img_html = (
+        f'<img src="{html.escape(logo_norm)}" alt="{html.escape(broker_nombre)}" '
+        f'style="max-height:110px;max-width:280px;object-fit:contain;border-radius:8px;display:inline-block;margin:6px 0;" />'
+        if logo_norm
+        else ""
+    )
+
     if es_html:
-        content_html = body
+        content_html = body.replace("{logo}", logo_img_html)
     else:
+        logo_token = "__WESBYTE_LOGO_PLACEHOLDER__"
+        body_tok = body.replace("{logo}", logo_token)
         paragraphs = [
-            f"<p style='margin:0 0 12px 0;line-height:1.6;'>{html.escape(p).replace(chr(10), '<br>')}</p>"
-            for p in body.split("\n\n")
+            f"<p style='margin:0 0 12px 0;line-height:1.6;'>{html.escape(p).replace(chr(10), '<br>').replace(logo_token, logo_img_html)}</p>"
+            for p in body_tok.split("\n\n")
             if p.strip()
         ]
-        content_html = "".join(paragraphs) or f"<p>{html.escape(body)}</p>"
+        content_html = "".join(paragraphs) or f"<p>{html.escape(body_tok).replace(logo_token, logo_img_html)}</p>"
 
     return (
         "<div style='font-family:Inter,Arial,sans-serif;max-width:620px;margin:0 auto;"
@@ -170,7 +186,7 @@ def _wrap_test_email_html(body: str, broker_nombre: str, es_html: bool = False) 
 
 def _get_cliente_info(cliente_id: int) -> Dict[str, Any]:
     sql = f"""
-    SELECT c.id, c.nombre, c.email, c.plan_id, IFNULL(p.codigo, CAST(c.plan_id AS STRING)) AS plan_codigo
+    SELECT c.id, c.nombre, c.email, c.logo, c.plan_id, IFNULL(p.codigo, CAST(c.plan_id AS STRING)) AS plan_codigo
     FROM `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.clientes` c
     LEFT JOIN `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.planes` p ON c.plan_id = p.id
     WHERE c.id = @cid
@@ -180,7 +196,7 @@ def _get_cliente_info(cliente_id: int) -> Dict[str, Any]:
         query_parameters=[bigquery.ScalarQueryParameter("cid", "INT64", int(cliente_id))]
     )
     rows = [dict(r) for r in get_bq_client().query(sql, job_config=cfg).result()]
-    return rows[0] if rows else {"id": cliente_id, "nombre": "Wesbyte Demo", "email": "", "plan_id": 0, "plan_codigo": ""}
+    return rows[0] if rows else {"id": cliente_id, "nombre": "Wesbyte Demo", "email": "", "logo": "", "plan_id": 0, "plan_codigo": ""}
 
 
 async def send_test_notification(
@@ -243,6 +259,11 @@ async def send_test_notification(
         if es_html is None and canal_norm == "email":
             resolved_html = bool(item_cfg.get("email_es_html", False))
 
+    if canal_norm != "email" and "{logo}" in resolved_msg:
+        raise ValueError("La variable {logo} solo puede usarse en plantillas de Correo Electrónico.")
+    if canal_norm == "email" and "{logo}" in resolved_subject:
+        raise ValueError("La variable {logo} solo puede usarse en el cuerpo del correo, no en el asunto.")
+
     rendered_msg = render_template_with_dummy_data(resolved_msg, broker_nombre)
     rendered_subject = render_template_with_dummy_data(resolved_subject, broker_nombre)
 
@@ -257,8 +278,14 @@ async def send_test_notification(
     if canal_norm == "email":
         if "@" not in clean_dest:
             raise ValueError("El correo electrónico de destino no es válido.")
-        html_body = _wrap_test_email_html(rendered_msg, broker_nombre, es_html=resolved_html)
-        text_body = re.sub(r"<[^>]+>", "", rendered_msg) if resolved_html else rendered_msg
+        html_body = _wrap_test_email_html(
+            rendered_msg,
+            broker_nombre,
+            es_html=resolved_html,
+            logo_url=str(cliente_info.get("logo") or ""),
+        )
+        cleaned_text_msg = rendered_msg.replace("{logo}", "").strip()
+        text_body = re.sub(r"<[^>]+>", "", cleaned_text_msg) if resolved_html else cleaned_text_msg
         attachments = None
         if incluye_pdf and pdf_b64:
             attachments = [

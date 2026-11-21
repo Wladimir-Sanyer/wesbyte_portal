@@ -1084,6 +1084,15 @@
                 <span class="text-muted fw-normal ms-1">({{ v.label }})</span>
               </button>
               {% endfor %}
+              <button type="button"
+                      id="btnVarLogoEmail"
+                      class="btn btn-sm btn-outline-primary fw-bold"
+                      style="border-radius:10px;font-size:12px;display:none;"
+                      onclick="insertarVariableLogoEmail()"
+                      title="Inserta el logo de tu empresa donde desees dentro de correos editables">
+                <i class="ti ti-photo me-1" style="font-size:12px;"></i>{{"{"}}logo{{"}"}}
+                <span class="text-muted fw-normal ms-1">(Logo · solo correo editable)</span>
+              </button>
             </div>
           </div>
 
@@ -2043,6 +2052,7 @@
 
   const NOTIF_DATA = {{ d.notificaciones_detalle | tojson }};
   const PLANTILLA_VARS = {{ d.plantilla_variables | tojson }};
+  let CLIENTE_LOGO_URL = {{ (d.cliente.logo or "") | tojson }};
   let ULTIMA_PLANTILLA = {{ d.ultima_plantilla | tojson }};
   let canalPlantillaActivo = (ULTIMA_PLANTILLA && ULTIMA_PLANTILLA.canal === "email") ? "email" : "whatsapp";
   let ultimoEditorEnfocado = null;
@@ -2069,13 +2079,30 @@
       .replace(/"/g, "&quot;");
   }
 
-  function renderVistaPreviaTexto(texto, esHtml = false) {
+  function buildLogoPreviewHtml() {
+    if (CLIENTE_LOGO_URL) {
+      return `<img src="${escapeHtml(CLIENTE_LOGO_URL)}" alt="Logo empresa" style="max-height:80px;max-width:240px;object-fit:contain;border-radius:8px;display:inline-block;margin:4px 0;">`;
+    }
+    return `<span class="badge bg-secondary-lt text-muted border px-2 py-1">[Logo de tu empresa]</span>`;
+  }
+
+  function renderVistaPreviaTexto(texto, esHtml = false, permitirLogo = false) {
     let out = String(texto || "");
     for (const v of PLANTILLA_VARS) {
       const re = new RegExp("\\{" + v.key + "\\}", "g");
       out = out.replace(re, v.ejemplo);
     }
     out = out.replace(/\{regularizaciones_faltantes\}/g, "• Firma de contrato\n• Pago de cuota inicial");
+    if (permitirLogo) {
+      const logoHtml = buildLogoPreviewHtml();
+      if (esHtml) {
+        out = out.replace(/\{logo\}/g, logoHtml);
+        return out.replace(/\n/g, "<br>");
+      }
+      const LOGO_TOKEN = "__WESBYTE_LOGO_PLACEHOLDER__";
+      out = out.replace(/\{logo\}/g, LOGO_TOKEN);
+      return escapeHtml(out).replace(/\n/g, "<br>").replace(new RegExp(LOGO_TOKEN, "g"), logoHtml);
+    }
     if (esHtml) {
       return out.replace(/\n/g, "<br>");
     }
@@ -2141,6 +2168,26 @@
     insertarTextoEnEditor("{regularizaciones_faltantes}");
   }
 
+  function insertarVariableLogoEmail() {
+    if (canalPlantillaActivo !== "email") return;
+    let target = ultimoEditorEnfocado;
+    if (!target || !document.body.contains(target) || target.tagName !== "TEXTAREA") {
+      if (target && target.id && target.id.startsWith("tpl_asunto_email_")) {
+        const cod = target.id.replace("tpl_asunto_email_", "");
+        target = document.getElementById(`tpl_msg_email_${cod}`);
+      }
+      if (!target || !document.body.contains(target) || target.tagName !== "TEXTAREA") {
+        target = document.querySelector("#contenedorPlantillasCanal textarea.plantilla-editor-input");
+      }
+    }
+    if (!target) {
+      Swal.fire("Atención", "No hay un cuerpo de correo editable activo.", "info");
+      return;
+    }
+    ultimoEditorEnfocado = target;
+    insertarTextoEnEditor("{logo}");
+  }
+
   function insertarIconoEnEditor(icono) {
     insertarTextoEnEditor(icono);
   }
@@ -2169,7 +2216,7 @@
     }
     const esHtml = canal === "email" && Boolean(item && item.email_es_html);
     if (prevEl && msgEl) {
-      prevEl.innerHTML = renderVistaPreviaTexto(msgEl.value, esHtml);
+      prevEl.innerHTML = renderVistaPreviaTexto(msgEl.value, esHtml, canal === "email");
     }
     if (canal === "email") {
       const asuEl = document.getElementById(`tpl_asunto_email_${codigo}`);
@@ -2188,6 +2235,11 @@
     const habilitadas = NOTIF_DATA.filter(n =>
       canal === "whatsapp" ? n.whatsapp_habilitado : n.email_habilitado
     );
+    const btnVarLogo = document.getElementById("btnVarLogoEmail");
+    if (btnVarLogo) {
+      const tieneEditableEmail = canal === "email" && habilitadas.some(n => n.editable);
+      btnVarLogo.style.display = tieneEditableEmail ? "inline-flex" : "none";
+    }
 
     if (habilitadas.length === 0) {
       cont.innerHTML = `
@@ -2313,7 +2365,7 @@
                     <i class="ti ti-eye me-1"></i> Vista previa (datos de ejemplo)
                   </label>
                   <div class="p-3 rounded-3 border bg-light small" style="min-height:132px;white-space:normal;" id="tpl_prev_${canal}_${n.codigo}">
-                    ${renderVistaPreviaTexto(msgVal, esHtmlEmail)}
+                    ${renderVistaPreviaTexto(msgVal, esHtmlEmail, isEmail)}
                   </div>
                 </div>
               </div>
@@ -2359,6 +2411,14 @@
     }
     if (codigo !== "regularizaciones" && (msgEl.value.includes("{regularizaciones_faltantes}") || (asuEl && asuEl.value.includes("{regularizaciones_faltantes}")))) {
       Swal.fire("Variable no permitida", "La variable {regularizaciones_faltantes} solo puede usarse en 2. Envío de Regularizaciones.", "warning");
+      return;
+    }
+    if (canal !== "email" && msgEl.value.includes("{logo}")) {
+      Swal.fire("Variable no permitida", "La variable {logo} solo puede usarse en plantillas de Correo Electrónico.", "warning");
+      return;
+    }
+    if (canal === "email" && asuEl && asuEl.value.includes("{logo}")) {
+      Swal.fire("Variable no permitida", "La variable {logo} solo puede usarse en el cuerpo del correo, no en el asunto.", "warning");
       return;
     }
     const orig = btn.innerHTML;

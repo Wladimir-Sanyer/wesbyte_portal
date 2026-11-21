@@ -458,6 +458,11 @@ def save_cliente_plantilla(
     ):
         raise ValueError("La variable {regularizaciones_faltantes} solo puede usarse en 'Envío de Regularizaciones'.")
 
+    if canal_norm != "email" and "{logo}" in msg_clean:
+        raise ValueError("La variable {logo} solo puede usarse en plantillas de Correo Electrónico.")
+    if canal_norm == "email" and "{logo}" in asunto_clean:
+        raise ValueError("La variable {logo} solo puede usarse en el cuerpo del correo, no en el asunto.")
+
     P = BIGQUERY_PROJECT_ID
     W = WESBYTES_DATASET_ID
     es_html_val = bool(es_html) if canal_norm == "email" else False

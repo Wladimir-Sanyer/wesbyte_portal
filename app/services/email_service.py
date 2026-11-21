@@ -414,8 +414,17 @@ class EmailService:
 
         broker_limpio = _html.escape((nombre_broker or "Tu Asesor de Seguros").strip())
         asunto_limpio = _html.escape((asunto or "Notificación").strip())
-        cuerpo_html = _html.escape(str(cuerpo_texto or "")).replace("\r\n", "\n").replace("\n", "<br>")
+        logo_token = "__WESBYTE_LOGO_PLACEHOLDER__"
+        cuerpo_tok = str(cuerpo_texto or "").replace("{logo}", logo_token)
+        cuerpo_html = _html.escape(cuerpo_tok).replace("\r\n", "\n").replace("\n", "<br>")
         logo_norm = normalize_drive_logo_url(logo_cliente_url)
+        logo_inline_html = (
+            f'<img src="{_html.escape(logo_norm)}" alt="{broker_limpio}" '
+            f'style="max-height:110px;max-width:280px;object-fit:contain;border-radius:8px;display:inline-block;margin:6px 0;" />'
+            if logo_norm
+            else ""
+        )
+        cuerpo_html = cuerpo_html.replace(logo_token, logo_inline_html)
         logo_html = (
             f'<img src="{_html.escape(logo_norm)}" alt="{broker_limpio}" '
             f'style="max-height:130px;max-width:340px;object-fit:contain;border-radius:10px;background:#fff;padding:8px 12px;" />'
