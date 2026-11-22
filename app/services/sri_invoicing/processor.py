@@ -251,7 +251,11 @@ def emitir_y_enviar_factura_sync(datos_facturacion_id: int) -> Dict[str, Any]:
     estab = str(row.get("establecimiento") or SRI_ESTABLECIMIENTO or "001").strip().zfill(3)[:3]
     pto = str(row.get("punto_emision") or SRI_PUNTO_EMISION or "001").strip().zfill(3)[:3]
     secuencial = str(row.get("secuencial") or "").strip()
+    if secuencial.lower() in ("nan", "none", "null"):
+        secuencial = ""
     clave_acceso = str(row.get("clave_acceso") or "").strip()
+    if clave_acceso.lower() in ("nan", "none", "null"):
+        clave_acceso = ""
 
     now_ec = datetime.datetime.now(TZ_ECUADOR)
     fecha_emision_val = row.get("fecha_emision")

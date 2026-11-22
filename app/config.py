@@ -82,21 +82,25 @@ STAFF_PASSWORD = os.getenv("PORTAL_STAFF_PASSWORD", "").strip()
 IVA_PORCENTAJE = float(os.getenv("IVA_PORCENTAJE", "15.0"))
 
 # Facturación Electrónica SRI Ecuador (Esquema Offline)
-SRI_AMBIENTE = os.getenv("SRI_AMBIENTE", "1").strip() or "1"  # "1" Pruebas, "2" Producción
-SRI_P12_PATH = os.getenv("SRI_P12_PATH", "/app/.secrets/firma_electronica.p12").strip()
+def _clean_env(name: str, default: str = "") -> str:
+    return os.getenv(name, default).strip().strip('"').strip("'").strip()
+
+
+SRI_AMBIENTE = _clean_env("SRI_AMBIENTE", "1") or "1"  # "1" Pruebas, "2" Producción
+SRI_P12_PATH = _clean_env("SRI_P12_PATH", "/app/.secrets/firma_electronica.p12")
 if SRI_P12_PATH and not os.path.isabs(SRI_P12_PATH):
     SRI_P12_PATH = str(BASE_DIR / SRI_P12_PATH)
-SRI_P12_PASSWORD = os.getenv("SRI_P12_PASSWORD", "").strip()
-SRI_RUC_EMISOR = os.getenv("SRI_RUC_EMISOR", "").strip()
-SRI_RAZON_SOCIAL = os.getenv("SRI_RAZON_SOCIAL", "WESBYTE").strip()
-SRI_NOMBRE_COMERCIAL = os.getenv("SRI_NOMBRE_COMERCIAL", "WESBYTE").strip()
-SRI_DIR_MATRIZ = os.getenv("SRI_DIR_MATRIZ", "Guayaquil - Ecuador").strip()
-SRI_DIR_ESTABLECIMIENTO = os.getenv("SRI_DIR_ESTABLECIMIENTO", SRI_DIR_MATRIZ).strip()
-SRI_ESTABLECIMIENTO = os.getenv("SRI_ESTABLECIMIENTO", "001").strip().zfill(3)[:3]
-SRI_PUNTO_EMISION = os.getenv("SRI_PUNTO_EMISION", "001").strip().zfill(3)[:3]
-SRI_OBLIGADO_CONTABILIDAD = os.getenv("SRI_OBLIGADO_CONTABILIDAD", "SI").strip().upper()
-SRI_CONTRIBUYENTE_RIMPE = os.getenv("SRI_CONTRIBUYENTE_RIMPE", "").strip()
-SRI_INVOICE_HOUR_ECUADOR = os.getenv("SRI_INVOICE_HOUR_ECUADOR", "01:00").strip() or "01:00"
+SRI_P12_PASSWORD = _clean_env("SRI_P12_PASSWORD", "")
+SRI_RUC_EMISOR = _clean_env("SRI_RUC_EMISOR", "")
+SRI_RAZON_SOCIAL = _clean_env("SRI_RAZON_SOCIAL", "WESBYTE")
+SRI_NOMBRE_COMERCIAL = _clean_env("SRI_NOMBRE_COMERCIAL", "WESBYTE")
+SRI_DIR_MATRIZ = _clean_env("SRI_DIR_MATRIZ", "Guayaquil - Ecuador")
+SRI_DIR_ESTABLECIMIENTO = _clean_env("SRI_DIR_ESTABLECIMIENTO", SRI_DIR_MATRIZ)
+SRI_ESTABLECIMIENTO = _clean_env("SRI_ESTABLECIMIENTO", "001").zfill(3)[:3]
+SRI_PUNTO_EMISION = _clean_env("SRI_PUNTO_EMISION", "001").zfill(3)[:3]
+SRI_OBLIGADO_CONTABILIDAD = _clean_env("SRI_OBLIGADO_CONTABILIDAD", "SI").upper()
+SRI_CONTRIBUYENTE_RIMPE = _clean_env("SRI_CONTRIBUYENTE_RIMPE", "")
+SRI_INVOICE_HOUR_ECUADOR = _clean_env("SRI_INVOICE_HOUR_ECUADOR", "01:00") or "01:00"
 
 # Opciones de compromiso de pago único (sin suscripción mensual recurrente)
 PERIODOS_COMPROMISO: Dict[str, Dict[str, Any]] = {
