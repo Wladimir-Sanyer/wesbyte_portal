@@ -52,11 +52,8 @@ GOOGLE_DRIVE_CLIENT_SECRET = os.getenv("GOOGLE_DRIVE_CLIENT_SECRET", "").strip()
 GOOGLE_DRIVE_REFRESH_TOKEN = os.getenv("GOOGLE_DRIVE_REFRESH_TOKEN", "").strip()
 
 # Gemini IA (Diseño y Adaptación Inteligente de Plantillas de Correo)
-GEMINI_API_KEY = os.getenv(
-    "GEMINI_API_KEY",
-    "AIzaSyDxDGrj-XT2P7mFoqTIrFn_o5EqeTO-KIs",
-).strip()
-GEMINI_MODEL_EMAIL = os.getenv("GEMINI_MODEL_EMAIL", "gemini-3.8-flash").strip() or "gemini-3.8-flash"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL_EMAIL = os.getenv("GEMINI_MODEL_EMAIL", "gemini-2.5-flash-lite").strip() or "gemini-2.5-flash-lite"
 
 SECRET_KEY = os.getenv("SECRET_KEY", "wesbyte-portal-jwt-secret-key-2026")
 ALGORITHM = "HS256"

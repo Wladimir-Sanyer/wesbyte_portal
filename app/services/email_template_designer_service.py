@@ -2,7 +2,7 @@
 Servicio para el Módulo de Diseño y Personalización de Plantillas de Correo Electrónico:
 - 3 Plantillas HTML Base Email-Safe (clasica, moderna, minimalista) 100% compatibles con Gmail, Outlook y Apple Mail (tablas + CSS inline).
 - Control de acceso por Plan de Suscripción (Plan Prime vs Planes 2 y 3: Medium / Super Gold) y cuotas mensuales de generación IA.
-- Integración con Gemini (gemini-3.8-flash con Structured Outputs JSON) inyectando dinámicamente solo el diccionario de variables reales de la notificación.
+- Integración con Gemini (gemini-2.5-flash-lite con Structured Outputs JSON) inyectando dinámicamente solo el diccionario de variables reales de la notificación.
 - Validación estricta de seguridad (Regex Whitelist) antes de guardar en base de datos.
 """
 from __future__ import annotations
@@ -677,7 +677,7 @@ def render_preset_email_html(
 
 
 # ============================================================================
-# INTEGRACIÓN CON GEMINI (gemini-3.8-flash + STRUCTURED OUTPUTS JSON)
+# INTEGRACIÓN CON GEMINI (gemini-2.5-flash-lite + STRUCTURED OUTPUTS JSON)
 # ============================================================================
 class GeminiEmailDesignOutput(BaseModel):
     html_final: str = Field(
@@ -766,7 +766,7 @@ async def generate_or_adapt_email_template_with_ai(
     broker_nombre: str = "Seguros Alianza",
 ) -> Dict[str, Any]:
     """
-    Invoca a Gemini (`gemini-3.8-flash` con Structured Outputs JSON) inyectando
+    Invoca a Gemini (`gemini-2.5-flash-lite` con Structured Outputs JSON) inyectando
     ÚNICAMENTE el diccionario de variables reales que existen en nuestra app para esa notificación.
     """
     meta = CATALOGO_POR_CODIGO.get(notificacion_codigo)
@@ -844,7 +844,7 @@ REGLAS OBLIGATORIAS E INQUEBRANTABLES:
     if not GEMINI_API_KEY:
         raise RuntimeError("No se ha configurado GEMINI_API_KEY en el servidor.")
 
-    models_to_try = [GEMINI_MODEL_EMAIL, "gemini-2.5-flash"]
+    models_to_try = list(dict.fromkeys([GEMINI_MODEL_EMAIL, "gemini-2.5-flash-lite"]))
     # Eliminar duplicados manteniendo orden
     seen_m = set()
     unique_models = [m for m in models_to_try if not (m in seen_m or seen_m.add(m))]

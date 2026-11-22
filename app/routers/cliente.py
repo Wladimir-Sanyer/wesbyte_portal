@@ -2267,7 +2267,7 @@ async def api_render_preset_plantilla_email(request: Request, payload: Dict[str,
 @router.post("/api/notificaciones/plantillas/ia-generar")
 async def api_generar_plantilla_email_ia(request: Request, payload: Dict[str, Any] = Body(...)):
     """
-    Endpoint de Adaptación/Generación de plantillas de correo con IA (Gemini gemini-3.8-flash):
+    Endpoint de Adaptación/Generación de plantillas de correo con IA (Gemini gemini-2.5-flash-lite):
     1. Valida que el plan del tenant sea Plan 2 (Medium) o Plan 3 (Super Gold).
     2. Valida que no haya excedido su cuota mensual de generaciones IA.
     3. Inyecta únicamente el diccionario de variables reales de la notificación solicitada.
@@ -2335,7 +2335,7 @@ async def api_generar_plantilla_email_ia(request: Request, payload: Dict[str, An
             client_id=cliente_id,
             notificacion_codigo=notificacion_codigo,
             prompt_resumen=instrucciones[:250],
-            modelo=resultado.get("modelo_usado", "gemini-3.8-flash"),
+            modelo=resultado.get("modelo_usado", "gemini-2.5-flash-lite"),
         )
         nuevas_usadas = usadas + 1
         disponibles = max(0, cuota_total - nuevas_usadas)
