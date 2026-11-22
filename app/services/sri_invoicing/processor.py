@@ -50,6 +50,15 @@ def _esc_sql(val: Optional[str]) -> str:
     return str(val or "").replace("\\", "\\\\").replace("'", "''")
 
 
+def _safe_str(val: Any, default: str = "") -> str:
+    if val is None:
+        return default
+    s = str(val).strip()
+    if s.lower() in ("", "nan", "none", "null", "<na>", "nat"):
+        return default
+    return s
+
+
 def _asignar_siguiente_secuencial_atomico(
     establecimiento: str,
     punto_emision: str,
@@ -73,18 +82,16 @@ def _asignar_siguiente_secuencial_atomico(
                 LIMIT 1
             """)
             df_max_fac = get_query(f"""
-                SELECT MAX(SAFE_CAST(secuencial AS INT64)) AS max_sec
+                SELECT COALESCE(MAX(SAFE_CAST(secuencial AS INT64)), 0) AS max_sec
                 FROM `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.datos_facturacion`
                 WHERE establecimiento = '{_esc_sql(estab)}'
                   AND punto_emision = '{_esc_sql(pto)}'
                   AND ambiente = '{_esc_sql(amb)}'
             """)
-            curr_table = int(df_sec.iloc[0]["ultimo_secuencial"] or 0) if not df_sec.empty else 0
-            curr_fac = (
-                int(df_max_fac.iloc[0]["max_sec"] or 0)
-                if (not df_max_fac.empty and df_max_fac.iloc[0].get("max_sec") is not None)
-                else 0
-            )
+            raw_table = _safe_str(df_sec.iloc[0]["ultimo_secuencial"], "0") if not df_sec.empty else "0"
+            raw_fac = _safe_str(df_max_fac.iloc[0]["max_sec"], "0") if not df_max_fac.empty else "0"
+            curr_table = int(float(raw_table))
+            curr_fac = int(float(raw_fac))
             siguiente = max(curr_table, curr_fac) + 1
 
             if df_sec.empty:
@@ -246,16 +253,12 @@ def emitir_y_enviar_factura_sync(datos_facturacion_id: int) -> Dict[str, Any]:
         return {"success": False, "error": err_txt, "estado_sri": "ERROR"}
 
     # 3. Asignar o reutilizar secuencial + clave de acceso (idempotencia ante timeouts)
-    ambiente = str(row.get("ambiente") or SRI_AMBIENTE or "1").strip()
+    ambiente = _safe_str(row.get("ambiente"), SRI_AMBIENTE or "1")
     amb_norm = "2" if ambiente == "2" else "1"
-    estab = str(row.get("establecimiento") or SRI_ESTABLECIMIENTO or "001").strip().zfill(3)[:3]
-    pto = str(row.get("punto_emision") or SRI_PUNTO_EMISION or "001").strip().zfill(3)[:3]
-    secuencial = str(row.get("secuencial") or "").strip()
-    if secuencial.lower() in ("nan", "none", "null"):
-        secuencial = ""
-    clave_acceso = str(row.get("clave_acceso") or "").strip()
-    if clave_acceso.lower() in ("nan", "none", "null"):
-        clave_acceso = ""
+    estab = _safe_str(row.get("establecimiento"), SRI_ESTABLECIMIENTO or "001").zfill(3)[:3]
+    pto = _safe_str(row.get("punto_emision"), SRI_PUNTO_EMISION or "001").zfill(3)[:3]
+    secuencial = _safe_str(row.get("secuencial"), "")
+    clave_acceso = _safe_str(row.get("clave_acceso"), "")
 
     now_ec = datetime.datetime.now(TZ_ECUADOR)
     fecha_emision_val = row.get("fecha_emision")
