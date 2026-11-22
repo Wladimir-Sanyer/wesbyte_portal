@@ -417,6 +417,27 @@
       </table>
     </div>
   </div>
+
+  <!-- CONEXIÓN WHATSAPP OFICIAL DE WESBYTE (SUPERADMIN) -->
+  <div class="card card-elevated mt-4">
+    <div class="card-body p-4 d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div>
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <i class="ti ti-brand-whatsapp text-success fs-1"></i>
+          <h3 class="mb-0 fw-extrabold">Conexión WhatsApp Oficial de Wesbyte</h3>
+          <span id="waStatusBadge" class="badge bg-secondary-lt text-secondary">Verificando...</span>
+        </div>
+        <p id="waStatusDesc" class="text-muted small mb-0">
+          Vincula el número oficial de Wesbyte para enviar bienvenidas automáticas de pago y notificaciones de plataforma.
+        </p>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <button type="button" id="btnConectarWhatsapp" class="btn btn-success fw-bold px-4" onclick="conectarWhatsappQR()">
+          <i class="ti ti-qrcode me-1"></i> Vincular WhatsApp (QR)
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- MODAL CREAR / EDITAR PLAN SUPERADMIN -->
@@ -4349,8 +4370,30 @@
       btn.innerHTML = orig;
     }
   }
+</script>
 
-  // ==================== CONEXIÓN WHATSAPP (QR & ESTADO) ====================
+{% if d.total_registros > 0 %}
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const canvasReg = document.getElementById("chartRegistros");
+    if (!canvasReg || typeof Chart === "undefined") return;
+    const etiquetas = {registros_medicos: "Médicos", registros_vehiculares: "Vehiculares", registros_vida_e_inversion: "Vida e inversión", registros_ramos_generales: "Ramos generales"};
+    const datos = {{ d.registros | tojson }};
+    new Chart(canvasReg, {
+      type: "bar",
+      data: {
+        labels: Object.keys(datos).map(k => etiquetas[k] || k),
+        datasets: [{ data: Object.values(datos), backgroundColor: ["#4f46e5", "#06b6d4", "#d946ef", "#f59e0b"], borderRadius: 10 }]
+      },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+  });
+</script>
+{% endif %}
+{% endif %}
+
+<script>
+  // ==================== CONEXIÓN WHATSAPP (QR & ESTADO - COMPARTIDO) ====================
   let waPollTimer = null;
 
   async function _parseJsonSafe(resp) {
@@ -4484,13 +4527,12 @@
     if (qrModal) {
       qrModal.addEventListener("hidden.bs.modal", () => detenerPollingWhatsapp());
     }
-    // Lazy loading: solo consultar estado de WhatsApp en segundo plano tras la carga inicial si aún no se abrió el tab
     setTimeout(() => {
       if (!waEstadoCargado) {
         waEstadoCargado = true;
         cargarEstadoWhatsapp();
       }
-    }, 1800);
+    }, 1200);
   });
 </script>
 
@@ -4531,24 +4573,4 @@
     </div>
   </div>
 </div>
-
-{% if d.total_registros > 0 %}
-<script>
-  document.addEventListener("DOMContentLoaded", () => {
-    const canvasReg = document.getElementById("chartRegistros");
-    if (!canvasReg || typeof Chart === "undefined") return;
-    const etiquetas = {registros_medicos: "Médicos", registros_vehiculares: "Vehiculares", registros_vida_e_inversion: "Vida e inversión", registros_ramos_generales: "Ramos generales"};
-    const datos = {{ d.registros | tojson }};
-    new Chart(canvasReg, {
-      type: "bar",
-      data: {
-        labels: Object.keys(datos).map(k => etiquetas[k] || k),
-        datasets: [{ data: Object.values(datos), backgroundColor: ["#4f46e5", "#06b6d4", "#d946ef", "#f59e0b"], borderRadius: 10 }]
-      },
-      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
-    });
-  });
-</script>
-{% endif %}
-{% endif %}
 {% endblock %}

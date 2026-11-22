@@ -150,3 +150,46 @@ async def get_internal_client_notifications(client_id: int) -> Dict[str, Any]:
 
     data = get_cliente_notificaciones_y_plantillas(client_id=client_id)
     return {"success": True, "client_id": client_id, **data}
+
+
+# ============================================================================
+# FACTURACIÓN ELECTRÓNICA SRI ECUADOR (ENDPOINTS INTERNOS DE PRUEBA Y CONTROL)
+# ============================================================================
+sri_internal_router = APIRouter(
+    prefix="/api/internal/sri",
+    tags=["Facturación Electrónica SRI (Interno)"],
+)
+
+
+@sri_internal_router.post(
+    "/procesar-lote",
+    summary="Ejecutar manualmente un lote de facturación electrónica SRI",
+    dependencies=[Depends(verify_internal_api_key)],
+)
+@router.post(
+    "/sri/procesar-lote",
+    summary="Ejecutar manualmente un lote de facturación electrónica SRI (v1)",
+    dependencies=[Depends(verify_internal_api_key)],
+)
+async def sri_procesar_lote_endpoint(limit: int = 30) -> Dict[str, Any]:
+    """Procesa hasta `limit` facturas pendientes con pago APPROVED en PayPhone."""
+    from app.services.sri_invoicing import procesar_lote_facturas_pendientes
+
+    return await procesar_lote_facturas_pendientes(limit=limit)
+
+
+@sri_internal_router.post(
+    "/emitir/{datos_facturacion_id}",
+    summary="Emitir, autorizar y enviar una factura electrónica específica por su ID",
+    dependencies=[Depends(verify_internal_api_key)],
+)
+@router.post(
+    "/sri/emitir/{datos_facturacion_id}",
+    summary="Emitir, autorizar y enviar una factura electrónica específica por su ID (v1)",
+    dependencies=[Depends(verify_internal_api_key)],
+)
+async def sri_emitir_factura_endpoint(datos_facturacion_id: int) -> Dict[str, Any]:
+    """Ejecuta de forma idempotente la emisión SRI, subida a Drive y envío por correo de una factura."""
+    from app.services.sri_invoicing import emitir_y_enviar_factura
+
+    return await emitir_y_enviar_factura(datos_facturacion_id=datos_facturacion_id)

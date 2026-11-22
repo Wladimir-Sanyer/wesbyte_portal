@@ -51,11 +51,16 @@ from app.services.onboarding_service import (
     buscar_intento_pago_payphone,
     marcar_intento_pago_rechazado,
     completar_upgrade_payphone,
+    guardar_datos_facturacion,
 )
 from app.services.payphone_service import (
     generate_client_tx_id,
     build_payphone_box_config,
     confirm_payphone_transaction,
+)
+from app.services.welcome_notification_service import (
+    enviar_bienvenida_pago_cliente,
+    enviar_bienvenida_renovacion_por_cliente_id,
 )
 
 logger = logging.getLogger("wesbyte_portal.router")
@@ -64,6 +69,40 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent
 
 # Almacenamiento en memoria de sesiones de onboarding activas (respaldado por BigQuery)
 _active_checkouts: Dict[int, Dict[str, Any]] = {}
+_provisioning_tasks: Dict[int, Dict[str, Any]] = {}
+
+
+async def _run_provisioning_background(
+    cliente_id: int,
+    reg_data: Dict[str, Any],
+    modalidad: str,
+    payment_info: Dict[str, Any],
+) -> None:
+    """Ejecuta el aprovisionamiento BigQuery en segundo plano para evitar timeouts HTTP."""
+    try:
+        result = await asyncio.to_thread(
+            complete_payment_and_provision,
+            registration_data=reg_data,
+            modalidad_pago=modalidad,
+            payment_info=payment_info,
+        )
+        reg_data["provision_result"] = result
+        _active_checkouts[cliente_id] = reg_data
+        _provisioning_tasks[cliente_id] = {"status": "done", "error": None}
+        await enviar_bienvenida_pago_cliente(
+            cliente_id=cliente_id,
+            nombre_empresa=str(reg_data.get("nombre_empresa") or ""),
+            nombres_completos=str(reg_data.get("nombres_completos") or ""),
+            correo=str(reg_data.get("correo") or reg_data.get("username") or ""),
+            celular=str(reg_data.get("celular") or ""),
+            plan_nombre=str((reg_data.get("plan") or {}).get("nombre") or "Wesbyte"),
+            monto_pagado=float(result.get("monto_total_cobrado") or 0.0),
+            es_renovacion=False,
+            tx_id=str(payment_info.get("payphone_transaction_id") or ""),
+        )
+    except Exception as exc:
+        logger.exception("Error en aprovisionamiento en segundo plano para cliente_id=%s", cliente_id)
+        _provisioning_tasks[cliente_id] = {"status": "error", "error": str(exc)}
 
 _basic = HTTPBasic()
 
@@ -191,6 +230,7 @@ async def api_registrar_cliente(payload: Dict[str, Any] = Body(...)):
                 celular=reg_data["celular"],
                 documento=reg_data["ruc_cedula"],
                 modalidad_pago=f"pago_unico_{p_key}",
+                base_imponible_usd=m["base_imponible"],
             )
 
         return {
@@ -366,6 +406,7 @@ async def checkout_page(
             celular=reg_data["celular"],
             documento=reg_data["ruc_cedula"],
             modalidad_pago=f"pago_unico_{p_key}",
+            base_imponible_usd=m["base_imponible"],
         )
 
     return templates.TemplateResponse(
@@ -427,8 +468,45 @@ async def api_create_checkout_intent(payload: Dict[str, Any] = Body(...)):
         celular=reg_data["celular"],
         documento=reg_data["ruc_cedula"],
         modalidad_pago=modalidad_pago,
+        base_imponible_usd=m["base_imponible"],
     )
     return {"success": True, "box_config": box_config, "monto": m}
+
+
+@router.post("/api/checkout/facturacion")
+async def api_guardar_datos_facturacion(payload: Dict[str, Any] = Body(...)):
+    """Guarda los datos de facturación opcionales del cliente en wesbyte.administracion.datos_facturacion."""
+    cliente_id = int(payload.get("cliente_id", 0))
+    if cliente_id <= 0:
+        raise HTTPException(status_code=400, detail="Cliente inválido.")
+
+    razon_social = str(payload.get("razon_social") or "").strip()
+    ruc_cedula = str(payload.get("ruc_cedula") or "").strip()
+    correo_facturacion = str(payload.get("correo_facturacion") or "").strip()
+    if not razon_social or not ruc_cedula or not correo_facturacion or "@" not in correo_facturacion:
+        raise HTTPException(status_code=400, detail="Completa razón social, RUC/Cédula y correo de facturación válido.")
+
+    reg_data = _recover_checkout_from_bq(cliente_id)
+    if not reg_data:
+        raise HTTPException(status_code=404, detail="Registro de cliente no encontrado.")
+
+    periodo = normalizar_periodo(payload.get("periodo") or reg_data.get("periodo") or "1_year")
+    m = calcular_montos_periodo(float(reg_data["plan"]["precio_anual"]), periodo)
+
+    saved = guardar_datos_facturacion(
+        cliente_id=cliente_id,
+        razon_social=razon_social,
+        ruc_cedula=ruc_cedula,
+        correo_facturacion=correo_facturacion,
+        direccion=str(payload.get("direccion") or ""),
+        telefono=str(payload.get("telefono") or ""),
+        client_transaction_id=str(payload.get("client_transaction_id") or ""),
+        monto_base=m["base_imponible"],
+        iva_pct=m["iva_pct"],
+        iva_monto=m["iva"],
+        monto_total=m["total"],
+    )
+    return {"success": True, "id": saved["id"], "message": "Datos de facturación guardados correctamente."}
 
 
 @router.post("/api/checkout/confirm")
@@ -511,6 +589,19 @@ async def api_confirm_payment_and_provision(payload: Dict[str, Any] = Body(...))
         )
         reg_data["provision_result"] = result
         _active_checkouts[cliente_id] = reg_data
+        asyncio.create_task(
+            enviar_bienvenida_pago_cliente(
+                cliente_id=cliente_id,
+                nombre_empresa=str(reg_data.get("nombre_empresa") or ""),
+                nombres_completos=str(reg_data.get("nombres_completos") or ""),
+                correo=str(reg_data.get("correo") or reg_data.get("username") or ""),
+                celular=str(reg_data.get("celular") or ""),
+                plan_nombre=str((reg_data.get("plan") or {}).get("nombre") or "Wesbyte"),
+                monto_pagado=float(result.get("monto_total_cobrado") or 0.0),
+                es_renovacion=False,
+                tx_id=str(payment_info.get("payphone_transaction_id") or ""),
+            )
+        )
         return {
             "success": True,
             "redirect_url": f"/exito/{cliente_id}",
@@ -542,6 +633,8 @@ async def payphone_redirect_callback(
     if intento and str(intento.get("estado_pago") or "").upper() == "APPROVED" and cliente_id:
         if modalidad in ("upgrade_plan", "mejora_usuarios", "mejora_recursos"):
             return RedirectResponse(url="/mi-portal?upgrade=ok", status_code=302)
+        if _provisioning_tasks.get(cliente_id, {}).get("status") == "running":
+            return RedirectResponse(url=f"/activando/{cliente_id}", status_code=302)
         return RedirectResponse(url=f"/exito/{cliente_id}", status_code=302)
 
     # Respaldo en caso de que el tx_id viniera de un flujo anterior sin registro previo
@@ -590,22 +683,75 @@ async def payphone_redirect_callback(
         }
 
     if es_upgrade and intento:
-        completar_upgrade_payphone(
+        up_res = completar_upgrade_payphone(
             cliente_id=cliente_id,
             intento=intento,
             payment_info=payment_info,
         )
         invalidate_cliente_cache(cliente_id)
+        plan_obj = get_plan_by_code_or_id(str(intento.get("plan_id") or ""))
+        asyncio.create_task(
+            enviar_bienvenida_renovacion_por_cliente_id(
+                cliente_id=cliente_id,
+                plan_nombre=str((plan_obj or {}).get("nombre") or "Wesbyte"),
+                monto_pagado=float(up_res.get("monto_pagado") or 0.0),
+                tx_id=str(payment_info.get("payphone_transaction_id") or ""),
+            )
+        )
         return RedirectResponse(url="/mi-portal?upgrade=ok", status_code=302)
 
-    result = complete_payment_and_provision(
-        registration_data=reg_data,
-        modalidad_pago=modalidad,
-        payment_info=payment_info,
+    task_info = _provisioning_tasks.get(cliente_id)
+    if not task_info or task_info.get("status") == "error":
+        _provisioning_tasks[cliente_id] = {"status": "running", "error": None}
+        asyncio.create_task(_run_provisioning_background(cliente_id, reg_data, modalidad, payment_info))
+    elif task_info.get("status") == "done":
+        return RedirectResponse(url=f"/exito/{cliente_id}", status_code=302)
+
+    return RedirectResponse(url=f"/activando/{cliente_id}", status_code=302)
+
+
+@router.get("/activando/{cliente_id}", response_class=HTMLResponse)
+async def activando_page(request: Request, cliente_id: int):
+    """Pantalla intermedia mientras se aprovisiona el dataset en segundo plano."""
+    reg_data = _recover_checkout_from_bq(cliente_id)
+    if not reg_data:
+        return RedirectResponse(url="/", status_code=302)
+
+    if _provisioning_tasks.get(cliente_id, {}).get("status") == "done":
+        return RedirectResponse(url=f"/exito/{cliente_id}", status_code=302)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="activando.html",
+        context={
+            "reg": reg_data,
+            "soporte_email": SOPORTE_EMAIL,
+            "app_version": APP_VERSION,
+            "sesion": get_sesion(request),
+        },
     )
-    reg_data["provision_result"] = result
-    _active_checkouts[cliente_id] = reg_data
-    return RedirectResponse(url=f"/exito/{cliente_id}", status_code=302)
+
+
+@router.get("/api/activacion/{cliente_id}/estado")
+async def activacion_estado(cliente_id: int):
+    """Consulta el estado del aprovisionamiento en segundo plano."""
+    task_info = _provisioning_tasks.get(cliente_id)
+    if task_info:
+        if task_info["status"] == "done":
+            return {"status": "done", "redirect_url": f"/exito/{cliente_id}"}
+        if task_info["status"] == "error":
+            return {"status": "error", "error": task_info.get("error")}
+        return {"status": "running"}
+
+    # Respaldo si el proceso ya terminó en BigQuery tras un reinicio
+    df_c = get_query(f"""
+        SELECT estado FROM `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.clientes`
+        WHERE id = {int(cliente_id)}
+        LIMIT 1
+    """)
+    if not df_c.empty and str(df_c.iloc[0].get("estado") or "").upper() == "ACTIVO":
+        return {"status": "done", "redirect_url": f"/exito/{cliente_id}"}
+    return {"status": "running"}
 
 
 @router.get("/exito/{cliente_id}", response_class=HTMLResponse)

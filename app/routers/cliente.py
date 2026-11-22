@@ -27,6 +27,7 @@ from app.config import (
     BIGQUERY_PROJECT_ID,
     DEMO_PLAN_CONFIG,
     ECUADOR_TZ,
+    IVA_PORCENTAJE,
     PLANES_OFICIALES,
     SECRET_KEY,
     SOPORTE_EMAIL,
@@ -51,6 +52,7 @@ from app.services.whatsapp_client import (
     WhatsAppClientError,
     sync_client_whatsapp_from_admin,
 )
+from app.services.welcome_notification_service import WHATSAPP_WESBYTE_SENDER_CLIENT_ID
 
 logger = logging.getLogger("wesbyte_portal.cliente")
 router = APIRouter()
@@ -1365,7 +1367,10 @@ def _calcular_upgrade_diferencia(
             if diferencia < 1.00:
                 diferencia = 1.00
 
-        msi_meses = 6 if diferencia > 250 else 3
+        base_imponible = diferencia
+        iva_monto = round(base_imponible * (IVA_PORCENTAJE / 100.0), 2)
+        total_con_iva = round(base_imponible + iva_monto, 2)
+        msi_meses = 6 if total_con_iva > 250 else 3
         return {
             "tipo": "cambio_plan",
             "modalidad_pago": "upgrade_plan",
@@ -1381,9 +1386,12 @@ def _calcular_upgrade_diferencia(
             "monto_pagado_actual": round(monto_pagado_actual, 2),
             "credito_actual": credito_actual,
             "costo_nuevo_periodo": costo_nuevo_periodo,
-            "diferencia_usd": diferencia,
+            "base_imponible": base_imponible,
+            "iva_pct": IVA_PORCENTAJE,
+            "iva": iva_monto,
+            "diferencia_usd": total_con_iva,
             "msi_meses": msi_meses,
-            "cuota_msi": round(diferencia / msi_meses, 2),
+            "cuota_msi": round(total_con_iva / msi_meses, 2),
             "nota_prorrateo": nota_prorrateo,
             "descripcion": f"Upgrade a {nuevo_plan['nombre']} ({meses_no_usados} meses restantes)",
         }
@@ -1418,8 +1426,10 @@ def _calcular_upgrade_diferencia(
         costo_mensual_total = round(costo_u_mes + costo_e_mes + costo_w_mes, 2)
 
         costo_nuevo_periodo = round(costo_mensual_total * meses_no_usados, 2)
-        diferencia = max(1.00, costo_nuevo_periodo)
-        msi_meses = 6 if diferencia > 250 else 3
+        base_imponible = max(1.00, costo_nuevo_periodo)
+        iva_monto = round(base_imponible * (IVA_PORCENTAJE / 100.0), 2)
+        total_con_iva = round(base_imponible + iva_monto, 2)
+        msi_meses = 6 if total_con_iva > 250 else 3
 
         partes_desc = []
         if u_extra > 0:
@@ -1450,9 +1460,12 @@ def _calcular_upgrade_diferencia(
             "monto_pagado_actual": round(monto_pagado_actual, 2),
             "credito_actual": 0.0,
             "costo_nuevo_periodo": costo_nuevo_periodo,
-            "diferencia_usd": diferencia,
+            "base_imponible": base_imponible,
+            "iva_pct": IVA_PORCENTAJE,
+            "iva": iva_monto,
+            "diferencia_usd": total_con_iva,
             "msi_meses": msi_meses,
-            "cuota_msi": round(diferencia / msi_meses, 2),
+            "cuota_msi": round(total_con_iva / msi_meses, 2),
             "nota_prorrateo": nota_prorrateo,
             "descripcion": desc_str,
         }
@@ -1538,6 +1551,7 @@ async def api_upgrade_intent(request: Request, payload: Dict[str, Any] = Body(..
         celular=str(cli.get("celular") or "0999999999"),
         documento=str(cli.get("ruc_cedula") or "9999999999"),
         modalidad_pago=resumen["modalidad_pago"],
+        base_imponible_usd=resumen.get("base_imponible"),
     )
     return {"success": True, "resumen": resumen, "box_config": box_config}
 
@@ -1976,20 +1990,37 @@ async def api_guardar_notificaciones(request: Request, payload: Dict[str, Any] =
     }
 
 
-@router.get("/api/whatsapp/estado")
-async def api_whatsapp_estado(request: Request):
-    """Consulta y sincroniza el estado de conexión de WhatsApp del cliente con wesbyte_api."""
-    sesion = get_sesion(request)
+def _resolve_whatsapp_target(sesion: Optional[Dict[str, Any]]) -> tuple[int, bool]:
+    """Devuelve (cliente_id, es_superadmin) para la gestión de WhatsApp."""
     if not sesion:
         raise HTTPException(status_code=401, detail="Sesión expirada.")
+    if _is_superadmin(sesion):
+        return WHATSAPP_WESBYTE_SENDER_CLIENT_ID, True
     cliente_id = int(sesion.get("cid") or sesion.get("cliente_id") or 0)
     if cliente_id <= 0:
-        raise HTTPException(status_code=403, detail="Solo clientes autenticados pueden consultar WhatsApp.")
+        raise HTTPException(status_code=403, detail="Solo clientes autenticados pueden gestionar WhatsApp.")
+    return cliente_id, False
+
+
+@router.get("/api/whatsapp/estado")
+async def api_whatsapp_estado(request: Request):
+    """Consulta y sincroniza el estado de conexión de WhatsApp del cliente o del emisor oficial (superadmin)."""
+    cliente_id, es_superadmin = _resolve_whatsapp_target(get_sesion(request))
 
     try:
-        await sync_client_whatsapp_from_admin(cliente_id)
         wa = WhatsAppClient()
-        estado = await wa.get_status(cliente_id)
+        if not es_superadmin:
+            await sync_client_whatsapp_from_admin(cliente_id)
+            estado = await wa.get_status(cliente_id)
+        else:
+            try:
+                estado = await wa.get_status(cliente_id)
+            except WhatsAppClientError as exc:
+                if exc.status_code == 404:
+                    await sync_client_whatsapp_from_admin(cliente_id)
+                    estado = await wa.get_status(cliente_id)
+                else:
+                    raise
         return {
             "success": True,
             "requires_qr": True,
@@ -2004,18 +2035,24 @@ async def api_whatsapp_estado(request: Request):
 
 @router.post("/api/whatsapp/conectar")
 async def api_whatsapp_conectar(request: Request):
-    """Genera el código QR de vinculación de WhatsApp desde wesbyte_api para el cliente autenticado."""
-    sesion = get_sesion(request)
-    if not sesion:
-        raise HTTPException(status_code=401, detail="Sesión expirada.")
-    cliente_id = int(sesion.get("cid") or sesion.get("cliente_id") or 0)
-    if cliente_id <= 0:
-        raise HTTPException(status_code=403, detail="Solo clientes autenticados pueden vincular WhatsApp.")
+    """Genera el código QR de vinculación de WhatsApp desde wesbyte_api para el cliente o superadmin."""
+    cliente_id, es_superadmin = _resolve_whatsapp_target(get_sesion(request))
 
     try:
-        provision = await sync_client_whatsapp_from_admin(cliente_id)
         wa = WhatsAppClient()
-        res = await wa.connect_qr(cliente_id)
+        provision: Dict[str, Any] = {}
+        if not es_superadmin:
+            provision = await sync_client_whatsapp_from_admin(cliente_id)
+            res = await wa.connect_qr(cliente_id)
+        else:
+            try:
+                res = await wa.connect_qr(cliente_id)
+            except WhatsAppClientError as exc:
+                if exc.status_code == 404:
+                    provision = await sync_client_whatsapp_from_admin(cliente_id)
+                    res = await wa.connect_qr(cliente_id)
+                else:
+                    raise
         qr = res.get("qr_base64") or ""
         if qr and not qr.startswith("data:image"):
             qr = f"data:image/png;base64,{qr}"
@@ -2023,7 +2060,7 @@ async def api_whatsapp_conectar(request: Request):
             "success": True,
             "requires_qr": True,
             "client_id": cliente_id,
-            "plan_tier": provision.get("plan_tier"),
+            "plan_tier": provision.get("plan_tier") or "WESBYTE_OFICIAL",
             "instance_name": res.get("instance_name"),
             "qr_base64": qr,
             "connection_status": "qr_ready",

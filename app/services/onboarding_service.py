@@ -266,6 +266,110 @@ def registrar_intento_pago_payphone(
     return pago_id
 
 
+def guardar_datos_facturacion(
+    *,
+    cliente_id: int,
+    razon_social: str,
+    ruc_cedula: str,
+    correo_facturacion: str,
+    direccion: str = "",
+    telefono: str = "",
+    client_transaction_id: str = "",
+    monto_base: float = 0.0,
+    iva_pct: float = 15.0,
+    iva_monto: float = 0.0,
+    monto_total: float = 0.0,
+) -> Dict[str, Any]:
+    """Guarda los datos de facturación del cliente en wesbyte.administracion.datos_facturacion."""
+    row_id = get_next_id("datos_facturacion", WESBYTES_DATASET_ID)
+    now_ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    row = {
+        "id": row_id,
+        "cliente_id": int(cliente_id),
+        "client_transaction_id": str(client_transaction_id or "").strip(),
+        "razon_social": str(razon_social or "").strip(),
+        "ruc_cedula": str(ruc_cedula or "").strip(),
+        "correo_facturacion": str(correo_facturacion or "").strip().lower(),
+        "direccion": str(direccion or "").strip(),
+        "telefono": str(telefono or "").strip(),
+        "monto_base": Decimal(f"{float(monto_base or 0.0):.2f}"),
+        "iva_pct": Decimal(f"{float(iva_pct or 15.0):.2f}"),
+        "iva_monto": Decimal(f"{float(iva_monto or 0.0):.2f}"),
+        "monto_total": Decimal(f"{float(monto_total or 0.0):.2f}"),
+        "estado_factura": "pendiente",
+        "created_at": now_ts,
+        "updated_at": now_ts,
+    }
+    append_rows(WESBYTES_DATASET_ID, "datos_facturacion", [row])
+    return row
+
+
+def asegurar_datos_facturacion_post_pago(
+    *,
+    cliente_id: int,
+    client_transaction_id: str,
+    monto_total: float,
+    monto_base: Optional[float] = None,
+    iva_monto: Optional[float] = None,
+    razon_social: str = "",
+    ruc_cedula: str = "",
+    correo_facturacion: str = "",
+    direccion: str = "",
+    telefono: str = "",
+) -> None:
+    """Si el cliente no guardó datos de facturación personalizados para este pago, los registra automáticamente."""
+    try:
+        from app.config import IVA_PORCENTAJE
+
+        clean_tx = str(client_transaction_id or "").strip().replace("'", "''")
+        if clean_tx:
+            df_ex = get_query(f"""
+                SELECT id FROM `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.datos_facturacion`
+                WHERE client_transaction_id = '{clean_tx}'
+                LIMIT 1
+            """)
+            if not df_ex.empty:
+                return
+
+        if not (razon_social and ruc_cedula and correo_facturacion):
+            df_c = get_query(f"""
+                SELECT nombre, nombres_contacto, ruc_cedula, email, celular, ciudad
+                FROM `{BIGQUERY_PROJECT_ID}.{WESBYTES_DATASET_ID}.clientes`
+                WHERE id = {int(cliente_id)}
+                LIMIT 1
+            """)
+            if not df_c.empty:
+                c_row = df_c.iloc[0].to_dict()
+                razon_social = razon_social or str(c_row.get("nombre") or c_row.get("nombres_contacto") or "")
+                ruc_cedula = ruc_cedula or str(c_row.get("ruc_cedula") or "")
+                correo_facturacion = correo_facturacion or str(c_row.get("email") or "")
+                direccion = direccion or str(c_row.get("ciudad") or "")
+                telefono = telefono or str(c_row.get("celular") or "")
+
+        if not correo_facturacion:
+            return
+
+        total_f = round(float(monto_total or 0.0), 2)
+        base_f = round(float(monto_base), 2) if monto_base is not None else round(total_f / (1.0 + IVA_PORCENTAJE / 100.0), 2)
+        iva_f = round(float(iva_monto), 2) if iva_monto is not None else round(total_f - base_f, 2)
+
+        guardar_datos_facturacion(
+            cliente_id=cliente_id,
+            razon_social=razon_social or "Cliente Wesbyte",
+            ruc_cedula=ruc_cedula or "9999999999",
+            correo_facturacion=correo_facturacion,
+            direccion=direccion,
+            telefono=telefono,
+            client_transaction_id=clean_tx,
+            monto_base=base_f,
+            iva_pct=IVA_PORCENTAJE,
+            iva_monto=iva_f,
+            monto_total=total_f,
+        )
+    except Exception:
+        pass
+
+
 def buscar_intento_pago_payphone(client_transaction_id: str) -> Optional[Dict[str, Any]]:
     """Busca un intento de pago en wesbyte.administracion.pagos_payphone por su client_transaction_id."""
     clean_tx = str(client_transaction_id or "").strip().replace("'", "''")
@@ -364,6 +468,12 @@ def completar_upgrade_payphone(
                 updated_at = CURRENT_TIMESTAMP()
             WHERE cliente_id = {int(cliente_id)} AND estado IN ('activa', 'por_vencer')
         """)
+
+    asegurar_datos_facturacion_post_pago(
+        cliente_id=cliente_id,
+        client_transaction_id=str(payment_info.get("client_transaction_id") or ""),
+        monto_total=monto_pagado,
+    )
 
     return {"success": True, "modalidad": modalidad, "monto_pagado": monto_pagado}
 
@@ -606,6 +716,19 @@ def complete_payment_and_provision(
         admin_username=correo_admin,
         admin_password_plain="",
         admin_password_hashed=pw_hash,
+    )
+
+    asegurar_datos_facturacion_post_pago(
+        cliente_id=cliente_id,
+        client_transaction_id=str(payment_info.get("client_transaction_id") or ""),
+        monto_total=round(monto_total, 2),
+        monto_base=float(montos.get("base_imponible") or 0.0),
+        iva_monto=float(montos.get("iva") or 0.0),
+        razon_social=str(registration_data.get("nombre_empresa") or ""),
+        ruc_cedula=str(registration_data.get("ruc_cedula") or ""),
+        correo_facturacion=correo_admin,
+        direccion=str(registration_data.get("ciudad") or ""),
+        telefono=str(registration_data.get("celular") or ""),
     )
 
     return {

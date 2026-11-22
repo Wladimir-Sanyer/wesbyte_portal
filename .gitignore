@@ -4,4 +4,6 @@ __pycache__/
 venv/
 .env
 .secrets/
+*.p12
+*.pfx
 *.log

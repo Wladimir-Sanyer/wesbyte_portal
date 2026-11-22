@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Activando tu entorno · {{ reg.nombre_empresa }} · Wesbyte Portal{% endblock %}
+{% block meta_robots %}noindex, nofollow{% endblock %}
+
+{% block content %}
+<div class="container-xl py-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-7">
+      <div class="card rounded-4 border-0 shadow-lg overflow-hidden">
+        <div class="p-4 text-center text-white" style="background: linear-gradient(135deg, #12163a, #4f46e5);">
+          <div id="iconoEstado" class="mb-3">
+            <div class="spinner-border text-light" style="width: 3.2rem; height: 3.2rem; border-width: 0.3rem;" role="status">
+              <span class="visually-hidden">Activando...</span>
+            </div>
+          </div>
+          <h1 id="tituloEstado" class="fw-extrabold mb-1">¡Pago verificado! Activando tu entorno...</h1>
+          <p class="mb-0 opacity-90 fs-4">
+            Estamos preparando tu espacio privado para <strong>{{ reg.nombre_empresa }}</strong>.
+          </p>
+        </div>
+
+        <div class="card-body p-4 p-lg-5">
+          <div class="alert alert-info border-0 rounded-3 mb-4" id="alertaProgreso">
+            <div class="d-flex align-items-center gap-2">
+              <i class="ti ti-clock fs-2"></i>
+              <div>
+                <strong>Este proceso toma entre 20 y 60 segundos.</strong>
+                <div class="small">Por favor no cierres esta pestaña; te redirigiremos automáticamente apenas esté listo.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="list-group list-group-flush border rounded-3 mb-3">
+            <div class="list-group-item d-flex align-items-center justify-content-between py-3">
+              <div class="d-flex align-items-center gap-2">
+                <i class="ti ti-circle-check-filled text-success fs-2"></i>
+                <span class="fw-semibold">Pago confirmado con PayPhone</span>
+              </div>
+              <span class="badge bg-green-lt text-green">Completado</span>
+            </div>
+            <div class="list-group-item d-flex align-items-center justify-content-between py-3">
+              <div class="d-flex align-items-center gap-2">
+                <span id="paso2Icon" class="spinner-border spinner-border-sm text-primary" role="status"></span>
+                <span class="fw-semibold">Creando base de datos privada y módulos</span>
+              </div>
+              <span id="paso2Badge" class="badge bg-azure-lt text-azure">En proceso...</span>
+            </div>
+            <div class="list-group-item d-flex align-items-center justify-content-between py-3">
+              <div class="d-flex align-items-center gap-2">
+                <i id="paso3Icon" class="ti ti-circle text-muted fs-2"></i>
+                <span class="fw-semibold">Configurando accesos y acuerdo NDA</span>
+              </div>
+              <span id="paso3Badge" class="badge bg-secondary-lt text-secondary">Pendiente</span>
+            </div>
+          </div>
+
+          <div id="bloqueError" class="alert alert-danger d-none rounded-3 mt-3" role="alert">
+            <div class="fw-bold mb-1"><i class="ti ti-alert-triangle me-1"></i> Ocurrió un inconveniente al activar tu entorno</div>
+            <div id="mensajeError" class="small mb-3"></div>
+            <div class="d-flex flex-wrap gap-2">
+              <button type="button" class="btn btn-sm btn-danger" onclick="window.location.reload()">
+                <i class="ti ti-refresh me-1"></i> Reintentar verificación
+              </button>
+              <a href="mailto:{{ soporte_email }}" class="btn btn-sm btn-outline-danger">
+                <i class="ti ti-mail me-1"></i> Contactar a soporte
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const clienteId = {{ reg.cliente_id }};
+  const statusUrl = `/api/activacion/${clienteId}/estado`;
+  let attempts = 0;
+
+  async function checkStatus() {
+    attempts += 1;
+    try {
+      const resp = await fetch(statusUrl, { cache: "no-store" });
+      if (!resp.ok) {
+        if (attempts < 90) setTimeout(checkStatus, 2500);
+        return;
+      }
+      const data = await resp.json();
+
+      if (data.status === "done") {
+        document.getElementById("paso2Icon").outerHTML = '<i class="ti ti-circle-check-filled text-success fs-2"></i>';
+        document.getElementById("paso2Badge").className = "badge bg-green-lt text-green";
+        document.getElementById("paso2Badge").textContent = "Completado";
+        document.getElementById("paso3Icon").className = "ti ti-circle-check-filled text-success fs-2";
+        document.getElementById("paso3Badge").className = "badge bg-green-lt text-green";
+        document.getElementById("paso3Badge").textContent = "Completado";
+        window.location.href = data.redirect_url || `/exito/${clienteId}`;
+        return;
+      }
+
+      if (data.status === "error") {
+        document.getElementById("alertaProgreso").classList.add("d-none");
+        document.getElementById("bloqueError").classList.remove("d-none");
+        document.getElementById("mensajeError").textContent = data.error || "Tu pago fue aprobado, pero no pudimos completar la activación automática. Escríbenos a soporte para finalizarlo de inmediato.";
+        return;
+      }
+
+      if (attempts < 120) {
+        setTimeout(checkStatus, 2000);
+      } else {
+        document.getElementById("alertaProgreso").classList.add("d-none");
+        document.getElementById("bloqueError").classList.remove("d-none");
+        document.getElementById("mensajeError").textContent = "La activación está tomando más tiempo de lo habitual. Puedes recargar esta página en unos segundos o ir directo a /exito/" + clienteId + ".";
+      }
+    } catch (err) {
+      if (attempts < 120) {
+        setTimeout(checkStatus, 2500);
+      }
+    }
+  }
+
+  setTimeout(checkStatus, 1500);
+})();
+</script>
+{% endblock %}

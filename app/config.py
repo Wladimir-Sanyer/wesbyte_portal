@@ -78,6 +78,26 @@ PAYPHONE_SANDBOX_MODE = os.getenv("PAYPHONE_SANDBOX_MODE", "true").lower() in ("
 STAFF_USER = os.getenv("PORTAL_STAFF_USER", "").strip()
 STAFF_PASSWORD = os.getenv("PORTAL_STAFF_PASSWORD", "").strip()
 
+# Impuesto al Valor Agregado (Ecuador 15% por defecto)
+IVA_PORCENTAJE = float(os.getenv("IVA_PORCENTAJE", "15.0"))
+
+# Facturación Electrónica SRI Ecuador (Esquema Offline)
+SRI_AMBIENTE = os.getenv("SRI_AMBIENTE", "1").strip() or "1"  # "1" Pruebas, "2" Producción
+SRI_P12_PATH = os.getenv("SRI_P12_PATH", "/app/.secrets/firma_electronica.p12").strip()
+if SRI_P12_PATH and not os.path.isabs(SRI_P12_PATH):
+    SRI_P12_PATH = str(BASE_DIR / SRI_P12_PATH)
+SRI_P12_PASSWORD = os.getenv("SRI_P12_PASSWORD", "").strip()
+SRI_RUC_EMISOR = os.getenv("SRI_RUC_EMISOR", "").strip()
+SRI_RAZON_SOCIAL = os.getenv("SRI_RAZON_SOCIAL", "WESBYTE").strip()
+SRI_NOMBRE_COMERCIAL = os.getenv("SRI_NOMBRE_COMERCIAL", "WESBYTE").strip()
+SRI_DIR_MATRIZ = os.getenv("SRI_DIR_MATRIZ", "Guayaquil - Ecuador").strip()
+SRI_DIR_ESTABLECIMIENTO = os.getenv("SRI_DIR_ESTABLECIMIENTO", SRI_DIR_MATRIZ).strip()
+SRI_ESTABLECIMIENTO = os.getenv("SRI_ESTABLECIMIENTO", "001").strip().zfill(3)[:3]
+SRI_PUNTO_EMISION = os.getenv("SRI_PUNTO_EMISION", "001").strip().zfill(3)[:3]
+SRI_OBLIGADO_CONTABILIDAD = os.getenv("SRI_OBLIGADO_CONTABILIDAD", "SI").strip().upper()
+SRI_CONTRIBUYENTE_RIMPE = os.getenv("SRI_CONTRIBUYENTE_RIMPE", "").strip()
+SRI_INVOICE_HOUR_ECUADOR = os.getenv("SRI_INVOICE_HOUR_ECUADOR", "01:00").strip() or "01:00"
+
 # Opciones de compromiso de pago único (sin suscripción mensual recurrente)
 PERIODOS_COMPROMISO: Dict[str, Dict[str, Any]] = {
     "1_year": {"codigo": "1_year", "anios": 1, "label": "1 Año", "descuento_pct": 0.0},
@@ -94,16 +114,18 @@ def normalizar_periodo(periodo: Optional[str]) -> str:
 
 
 def calcular_montos_periodo(precio_anual_base: float, periodo: Optional[str] = "1_year") -> Dict[str, Any]:
-    """Calcula subtotal, descuento, total, por año y equivalente mensual para 1_year, 2_years o 3_years."""
+    """Calcula subtotal, descuento, base imponible, IVA, total, por año y equivalente mensual."""
     p_key = normalizar_periodo(periodo)
     meta = PERIODOS_COMPROMISO[p_key]
     anios = int(meta["anios"])
     desc_pct = float(meta["descuento_pct"])
     subtotal = round(float(precio_anual_base) * anios, 2)
     ahorro = round(subtotal * (desc_pct / 100.0), 2)
-    total = round(subtotal - ahorro, 2)
-    por_anio = round(total / anios, 2)
-    por_mes = round(total / (anios * 12), 2)
+    base_imponible = round(subtotal - ahorro, 2)
+    iva = round(base_imponible * (IVA_PORCENTAJE / 100.0), 2)
+    total = round(base_imponible + iva, 2)
+    por_anio = round(base_imponible / anios, 2)
+    por_mes = round(base_imponible / (anios * 12), 2)
     cuota_msi_3 = round(total / 3, 2)
     msi_meses = 6 if total > 250 else 3
     cuota_msi = round(total / msi_meses, 2)
@@ -114,6 +136,9 @@ def calcular_montos_periodo(precio_anual_base: float, periodo: Optional[str] = "
         "descuento_pct": desc_pct,
         "subtotal": subtotal,
         "ahorro": ahorro,
+        "base_imponible": base_imponible,
+        "iva_pct": IVA_PORCENTAJE,
+        "iva": iva,
         "total": total,
         "por_anio": por_anio,
         "por_mes": por_mes,

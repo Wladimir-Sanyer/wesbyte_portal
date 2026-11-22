@@ -3,7 +3,27 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <title>{% block title %}Wesbyte · Automatiza tu negocio y olvídate de los reprocesos{% endblock %}</title>
+  <title>{% block title %}Wesbyte | CRM SaaS y Automatización para Asesores y Brokers de Seguros{% endblock %}</title>
+  {% block meta_description %}<meta name="description" content="Software SaaS y CRM automático para asesores, vendedores y brokers de seguros. Base de datos de pólizas y clientes, extracción PDF con IA y alertas por WhatsApp y correo."/>{% endblock %}
+  <meta name="robots" content="{% block meta_robots %}index, follow{% endblock %}"/>
+  {% block canonical %}<link rel="canonical" href="{{ request.headers.get('x-forwarded-proto', request.url.scheme) }}://{{ request.url.netloc }}{{ request.url.path }}"/>{% endblock %}
+
+  <!-- Open Graph / Social -->
+  <meta property="og:type" content="website"/>
+  <meta property="og:locale" content="es_EC"/>
+  <meta property="og:site_name" content="Wesbyte"/>
+  <meta property="og:title" content="{% block og_title %}Wesbyte | CRM SaaS y Automatización para Asesores y Brokers de Seguros{% endblock %}"/>
+  <meta property="og:description" content="{% block og_description %}Software SaaS y CRM automático para asesores, vendedores y brokers de seguros. Base de datos de pólizas, extracción PDF con IA y alertas por WhatsApp.{% endblock %}"/>
+  <meta property="og:url" content="{{ request.headers.get('x-forwarded-proto', request.url.scheme) }}://{{ request.url.netloc }}{{ request.url.path }}"/>
+  <meta property="og:image" content="{{ request.headers.get('x-forwarded-proto', request.url.scheme) }}://{{ request.url.netloc }}/static/img/wesbyte-logo-wave-sine-integrated.png"/>
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image"/>
+  <meta name="twitter:title" content="Wesbyte | CRM SaaS para Asesores y Brokers de Seguros"/>
+  <meta name="twitter:description" content="CRM automático, base de datos de pólizas y alertas por WhatsApp para asesores y vendedores de seguros."/>
+  <meta name="twitter:image" content="{{ request.headers.get('x-forwarded-proto', request.url.scheme) }}://{{ request.url.netloc }}/static/img/wesbyte-logo-wave-sine-integrated.png"/>
+
+  {% block structured_data %}{% endblock %}
   <link rel="icon" type="image/svg+xml" href="/static/img/wesbyte-isotipo-wave-sine.svg"/>
   <link rel="apple-touch-icon" href="/static/img/wesbyte-logo-wave-sine-integrated.png"/>
 

@@ -102,6 +102,50 @@
               </button>
             </div>
 
+            <!-- Datos de Facturación Opcionales -->
+            <div class="mb-4 p-3 rounded-3 border bg-white">
+              <label class="form-check mb-0">
+                <input class="form-check-input" type="checkbox" id="chkDatosFacturacion" onchange="toggleDatosFacturacion()">
+                <span class="form-check-label small fw-bold text-dark">
+                  <i class="ti ti-file-invoice text-primary me-1"></i>
+                  ¿Deseas llenar datos de facturación distintos a tu registro? (Opcional)
+                </span>
+              </label>
+              <div class="small text-muted mt-1" id="facturacionDefaultHint">
+                Si no lo marcas, emitiremos la factura a <strong>{{ reg.nombre_empresa }}</strong> (RUC/CI: {{ reg.ruc_cedula }}) y la enviaremos a <strong>{{ reg.correo }}</strong>.
+              </div>
+              <div id="bloqueDatosFacturacion" class="d-none mt-3 pt-3 border-top">
+                <div class="row g-2">
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold mb-1">Razón Social / Nombre</label>
+                    <input type="text" class="form-control form-control-sm" id="facRazonSocial" value="{{ reg.nombre_empresa }}" placeholder="Ej: Broker PMP S.A.">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold mb-1">RUC / Cédula</label>
+                    <input type="text" class="form-control form-control-sm" id="facRucCedula" value="{{ reg.ruc_cedula }}" placeholder="Ej: 0999999999001">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold mb-1">Correo para recibir la factura</label>
+                    <input type="email" class="form-control form-control-sm" id="facCorreo" value="{{ reg.correo }}" placeholder="facturacion@tuempresa.com">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold mb-1">Teléfono</label>
+                    <input type="text" class="form-control form-control-sm" id="facTelefono" value="{{ reg.celular }}" placeholder="0999999999">
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label small fw-bold mb-1">Dirección fiscal (opcional)</label>
+                    <input type="text" class="form-control form-control-sm" id="facDireccion" placeholder="Ciudad, calle principal y secundaria">
+                  </div>
+                </div>
+                <div class="d-flex align-items-center justify-content-between mt-3">
+                  <span id="facEstadoMsg" class="small text-muted">Se guardarán para emitir tu factura electrónica.</span>
+                  <button type="button" id="btnGuardarFacturacion" class="btn btn-sm btn-primary fw-bold" onclick="guardarDatosFacturacion()">
+                    <i class="ti ti-device-floppy me-1"></i> Guardar datos de facturación
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <!-- Acuerdo y Condiciones Legales antes de pagar -->
             <div class="mb-4 p-3 rounded-3 border bg-light">
               <div class="fw-bold text-dark mb-2">
@@ -278,16 +322,24 @@
               <strong>{{ plan.nombre }} ({{ plan.max_usuarios }} usr)</strong>
             </div>
             <div class="d-flex justify-content-between mb-1" id="rowSubtotal">
-              <span class="text-muted">Valor Anual Base:</span>
-              <span>${{ "%.2f"|format(plan.precio_anual) }} USD</span>
+              <span class="text-muted">Valor Base ({{ pm_inicial.label }}):</span>
+              <span>${{ "%.2f"|format(pm_inicial.subtotal) }} USD</span>
             </div>
-            <div class="d-flex justify-content-between mb-2 text-success fw-bold" id="rowDescuento">
-              <span>Descuento Pago Único Anual (-10%):</span>
-              <span>-${{ "%.2f"|format(plan.ahorro_anual) }} USD</span>
+            <div class="d-flex justify-content-between mb-1 text-success fw-bold {% if pm_inicial.ahorro <= 0 %}d-none{% endif %}" id="rowDescuento">
+              <span>Descuento ({{ pm_inicial.descuento_pct|int }}% OFF):</span>
+              <span>-${{ "%.2f"|format(pm_inicial.ahorro) }} USD</span>
+            </div>
+            <div class="d-flex justify-content-between mb-2" id="rowIva">
+              <span class="text-muted">IVA ({{ pm_inicial.iva_pct|int }}%):</span>
+              <span>+${{ "%.2f"|format(pm_inicial.iva) }} USD</span>
             </div>
             <div class="d-flex justify-content-between pt-2 border-top fs-2 fw-extrabold text-dark">
-              <span id="lblTotalPagarTitulo">Total a Pagar Hoy:</span>
-              <span class="text-primary" id="lblTotalPagarValor">${{ "%.2f"|format(plan.precio_anual_con_descuento) }} USD</span>
+              <span id="lblTotalPagarTitulo">Total a Pagar (incl. IVA):</span>
+              <span class="text-primary" id="lblTotalPagarValor">${{ "%.2f"|format(pm_inicial.total) }} USD</span>
+            </div>
+            <div class="small text-muted mt-2 pt-2 border-top">
+              <i class="ti ti-file-invoice text-primary me-1"></i>
+              Tu factura electrónica se enviará al correo <strong>{{ reg.correo }}</strong>.
             </div>
           </div>
 
@@ -396,6 +448,7 @@
     const m = MONTOS_POR_PERIODO[periodoSeleccionado];
     const rowSubtotal = document.getElementById("rowSubtotal");
     const rowDescuento = document.getElementById("rowDescuento");
+    const rowIva = document.getElementById("rowIva");
     const lblTotalValor = document.getElementById("lblTotalPagarValor");
     const subtituloMetodo = document.getElementById("subtituloMetodoPayphone");
 
@@ -403,10 +456,13 @@
     if (m.ahorro > 0) {
       rowDescuento.classList.remove("d-none");
       rowDescuento.innerHTML = `<span>Descuento (${m.descuento_pct.toFixed(0)}% OFF):</span><span>-$${m.ahorro.toFixed(2)} USD</span>`;
-      subtituloMetodo.textContent = `Pago único por ${m.label} con ${m.descuento_pct.toFixed(0)}% de descuento incluido`;
+      subtituloMetodo.textContent = `Pago único por ${m.label} con ${m.descuento_pct.toFixed(0)}% de descuento incluido (+ IVA)`;
     } else {
       rowDescuento.classList.add("d-none");
-      subtituloMetodo.textContent = `Pago único por ${m.label} · Tarjeta Visa / Mastercard o App PayPhone`;
+      subtituloMetodo.textContent = `Pago único por ${m.label} (+ IVA) · Tarjeta Visa / Mastercard o App PayPhone`;
+    }
+    if (rowIva) {
+      rowIva.innerHTML = `<span class="text-muted">IVA (${(m.iva_pct || 15).toFixed(0)}%):</span><span>+$${(m.iva || 0).toFixed(2)} USD</span>`;
     }
     lblTotalValor.textContent = `$${m.total.toFixed(2)} USD`;
     document.querySelectorAll(".lblMontoBoton").forEach(el => el.textContent = `$${m.total.toFixed(2)}`);
@@ -447,6 +503,52 @@
       intentoActivoConfig = BOXES_POR_PERIODO[periodo] || BOXES_POR_PERIODO["1_year"];
       _ppRenderAttempts = 0;
       renderizarCajitaOficialPayphone();
+    }
+  }
+
+  function toggleDatosFacturacion() {
+    const chk = document.getElementById("chkDatosFacturacion");
+    const bloque = document.getElementById("bloqueDatosFacturacion");
+    if (bloque) bloque.classList.toggle("d-none", !(chk && chk.checked));
+  }
+
+  async function guardarDatosFacturacion() {
+    const btn = document.getElementById("btnGuardarFacturacion");
+    const msg = document.getElementById("facEstadoMsg");
+    const cfg = intentoActivoConfig || BOXES_POR_PERIODO[periodoSeleccionado] || BOXES_POR_PERIODO["1_year"];
+    btn.disabled = true;
+    btn.innerHTML = "<span class='spinner-border spinner-border-sm me-1'></span> Guardando...";
+    try {
+      const resp = await fetch("/api/checkout/facturacion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cliente_id: CLIENTE_ID,
+          periodo: periodoSeleccionado,
+          client_transaction_id: cfg ? cfg.clientTransactionId : "",
+          razon_social: document.getElementById("facRazonSocial")?.value || "",
+          ruc_cedula: document.getElementById("facRucCedula")?.value || "",
+          correo_facturacion: document.getElementById("facCorreo")?.value || "",
+          telefono: document.getElementById("facTelefono")?.value || "",
+          direccion: document.getElementById("facDireccion")?.value || "",
+        }),
+      });
+      const json = await resp.json();
+      if (!resp.ok || !json.success) {
+        throw new Error(json.detail || "No se pudieron guardar los datos de facturación.");
+      }
+      if (msg) {
+        msg.className = "small text-success fw-bold";
+        msg.innerHTML = '<i class="ti ti-circle-check me-1"></i> Datos de facturación guardados.';
+      }
+    } catch (err) {
+      if (msg) {
+        msg.className = "small text-danger fw-bold";
+        msg.textContent = err.message || "Error al guardar.";
+      }
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-device-floppy me-1"></i> Guardar datos de facturación';
     }
   }
 
@@ -492,9 +594,9 @@
         storeId: storeId || undefined,
         clientTransactionId: cfg.clientTransactionId,
         amount: cfg.amount,
-        amountWithoutTax: cfg.amountWithoutTax,
-        amountWithTax: 0,
-        tax: 0,
+        amountWithoutTax: cfg.amountWithoutTax || 0,
+        amountWithTax: cfg.amountWithTax || 0,
+        tax: cfg.tax || 0,
         service: 0,
         tip: 0,
         currency: "USD",

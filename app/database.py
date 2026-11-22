@@ -400,6 +400,80 @@ def init_wesbytes_schema_and_seeds() -> None:
     )
     """)
 
+    # 5b. Datos de facturación por cliente / transacción (con soporte completo SRI Ecuador)
+    execute_query(f"""
+    CREATE TABLE IF NOT EXISTS `{dataset_ref}.datos_facturacion` (
+        id INT64 NOT NULL,
+        cliente_id INT64 NOT NULL,
+        client_transaction_id STRING,
+        razon_social STRING NOT NULL,
+        ruc_cedula STRING NOT NULL,
+        correo_facturacion STRING NOT NULL,
+        direccion STRING,
+        telefono STRING,
+        monto_base NUMERIC(10, 2),
+        iva_pct NUMERIC(5, 2),
+        iva_monto NUMERIC(10, 2),
+        monto_total NUMERIC(10, 2),
+        estado_factura STRING,
+        tipo_identificacion STRING,
+        ambiente STRING,
+        establecimiento STRING,
+        punto_emision STRING,
+        secuencial STRING,
+        clave_acceso STRING,
+        numero_autorizacion STRING,
+        fecha_autorizacion TIMESTAMP,
+        fecha_emision DATE,
+        codigo_forma_pago_sri STRING,
+        estado_sri STRING,
+        intentos_reintento INT64,
+        ultimo_error_sri STRING,
+        xml_drive_id STRING,
+        ride_pdf_drive_id STRING,
+        enviado_email BOOL,
+        fecha_envio_email TIMESTAMP,
+        resend_email_id STRING,
+        created_at TIMESTAMP,
+        updated_at TIMESTAMP
+    )
+    """)
+    ensure_columns_exist(
+        WESBYTES_DATASET_ID,
+        "datos_facturacion",
+        {
+            "tipo_identificacion": "STRING",
+            "ambiente": "STRING",
+            "establecimiento": "STRING",
+            "punto_emision": "STRING",
+            "secuencial": "STRING",
+            "clave_acceso": "STRING",
+            "numero_autorizacion": "STRING",
+            "fecha_autorizacion": "TIMESTAMP",
+            "fecha_emision": "DATE",
+            "codigo_forma_pago_sri": "STRING",
+            "estado_sri": "STRING",
+            "intentos_reintento": "INT64",
+            "ultimo_error_sri": "STRING",
+            "xml_drive_id": "STRING",
+            "ride_pdf_drive_id": "STRING",
+            "enviado_email": "BOOL",
+            "fecha_envio_email": "TIMESTAMP",
+            "resend_email_id": "STRING",
+        },
+    )
+
+    # 5c. Control atómico de secuenciales SRI por establecimiento, punto de emisión y ambiente
+    execute_query(f"""
+    CREATE TABLE IF NOT EXISTS `{dataset_ref}.sri_secuenciales` (
+        establecimiento STRING NOT NULL,
+        punto_emision STRING NOT NULL,
+        ambiente STRING NOT NULL,
+        ultimo_secuencial INT64 NOT NULL,
+        updated_at TIMESTAMP
+    )
+    """)
+
     # 6. Tablas de consumos y logs (asegurar usuario_id en logs)
     ensure_columns_exist(WESBYTES_DATASET_ID, "logs_emails", {"usuario_id": "INT64"})
     ensure_columns_exist(WESBYTES_DATASET_ID, "logs_whatsapp", {"usuario_id": "INT64"})

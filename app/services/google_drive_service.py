@@ -196,6 +196,47 @@ class GoogleDriveService:
             "web_view_link": data.get("webViewLink", ""),
         }
 
+    def upload_private_file(
+        self,
+        file_bytes: bytes,
+        filename: str,
+        mime_type: str = "application/octet-stream",
+        folder_path: str = "Facturas_SRI",
+    ) -> Dict[str, str]:
+        """Sube un archivo privado (ej. XML o PDF RIDE de factura SRI) a Google Drive sin permisos públicos."""
+        token = self._get_access_token()
+        folder_id = self.ensure_folder_path(folder_path, token=token)
+
+        boundary = f"wesbyte_{uuid.uuid4().hex}"
+        metadata = json.dumps({"name": filename, "parents": [folder_id]}).encode("utf-8")
+        body = (
+            f"--{boundary}\r\n"
+            f"Content-Type: application/json; charset=UTF-8\r\n\r\n"
+        ).encode("utf-8") + metadata + (
+            f"\r\n--{boundary}\r\n"
+            f"Content-Type: {mime_type}\r\n\r\n"
+        ).encode("utf-8") + file_bytes + f"\r\n--{boundary}--\r\n".encode("utf-8")
+
+        upload_resp = httpx.post(
+            self.UPLOAD_URL,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": f"multipart/related; boundary={boundary}",
+            },
+            params={"uploadType": "multipart", "fields": "id,name,webViewLink"},
+            content=body,
+            timeout=30.0,
+        )
+        if upload_resp.status_code >= 400:
+            raise GoogleDriveServiceError(f"Error subiendo archivo privado a Drive: {upload_resp.text}")
+
+        data = upload_resp.json()
+        return {
+            "file_id": data["id"],
+            "filename": data.get("name", filename),
+            "web_view_link": data.get("webViewLink", ""),
+        }
+
 
 def extract_drive_file_id(drive_url_or_id: Optional[str]) -> str:
     """Extrae el file_id de un enlace de Google Drive, lh3.googleusercontent.com, /api/media/ o ID directo."""

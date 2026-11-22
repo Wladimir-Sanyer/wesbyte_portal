@@ -95,6 +95,10 @@
                     <span class="text-muted">Transacción PayPhone:</span>
                     <code>{{ result.payment_info.payphone_transaction_id }}</code>
                   </div>
+                  <div class="text-muted mt-2 pt-2 border-top">
+                    <i class="ti ti-file-invoice text-primary me-1"></i>
+                    Tu factura electrónica será enviada al correo <strong>{{ reg.correo or reg.username }}</strong>.
+                  </div>
                 </div>
               </div>
             </div>

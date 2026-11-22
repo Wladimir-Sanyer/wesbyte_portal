@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional
 import httpx
 
 from app.config import (
+    IVA_PORCENTAJE,
     PAYPHONE_TOKEN,
     PAYPHONE_STORE_ID,
     PAYPHONE_API_URL,
@@ -49,13 +50,21 @@ def build_payphone_box_config(
     modalidad_pago: str,
     custom_token: Optional[str] = None,
     custom_store_id: Optional[str] = None,
+    base_imponible_usd: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     Construye el objeto de configuración para la Cajita de Pagos PayPhone (PPPaymentButtonBox)
     y los metadatos de pago único (1, 2 o 3 años).
-    Nota: PayPhone recibe todos los montos en centavos (enteros). Ej: $216.00 -> 21600.
+    Nota: PayPhone recibe todos los montos en centavos (enteros) y valida
+    amount == amountWithoutTax + amountWithTax + tax + service + tip.
     """
     monto_centavos = int(round(float(monto_usd) * 100))
+    if base_imponible_usd is not None:
+        base_centavos = int(round(float(base_imponible_usd) * 100))
+    else:
+        base_centavos = int(round(monto_centavos / (1.0 + (IVA_PORCENTAJE / 100.0))))
+    base_centavos = min(base_centavos, monto_centavos)
+    tax_centavos = max(0, monto_centavos - base_centavos)
     token = (custom_token or PAYPHONE_TOKEN or "").strip()
     store_id = (custom_store_id or PAYPHONE_STORE_ID or "").strip()
 
@@ -76,9 +85,9 @@ def build_payphone_box_config(
         "storeId": store_id,
         "clientTransactionId": client_tx_id,
         "amount": monto_centavos,
-        "amountWithoutTax": monto_centavos,
-        "amountWithTax": 0,
-        "tax": 0,
+        "amountWithoutTax": 0,
+        "amountWithTax": base_centavos,
+        "tax": tax_centavos,
         "service": 0,
         "tip": 0,
         "currency": "USD",

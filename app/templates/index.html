@@ -1,5 +1,25 @@
 {% extends "base.html" %}
 
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Wesbyte",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web",
+  "url": "{{ request.headers.get('x-forwarded-proto', request.url.scheme) }}://{{ request.url.netloc }}/",
+  "description": "CRM SaaS automático y base de datos para asesores, vendedores y brokers de seguros. Automatiza avisos de pólizas por WhatsApp y correo, extrae PDF con IA y organiza tu cartera de clientes.",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD",
+    "description": "Prueba Demo gratis por 5 días"
+  }
+}
+</script>
+{% endblock %}
+
 {% block content %}
 <!-- ============ HERO / MEGA PUBLICIDAD ============ -->
 <section class="hero-portal">
@@ -13,7 +33,7 @@
           ¿Cansado de <span class="text-gradient">reprocesos</span>, Excel eternos y clientes que se te olvidan?
         </h1>
         <p class="hero-subtitle mb-4">
-          Wesbyte trabaja 24/7 por ti: <strong class="text-white">avisa a tus clientes por WhatsApp</strong>, envía correos personalizados, consulta datos del Estado y ordena todo en tu propia base de datos.
+          El <strong class="text-white">CRM SaaS automático para asesores, vendedores y brokers de seguros</strong>. Wesbyte trabaja 24/7 por ti: <strong class="text-white">avisa a tus clientes por WhatsApp</strong>, envía correos personalizados, consulta datos del Estado y ordena tus pólizas en tu propia base de datos.
         </p>
         <div class="d-flex flex-wrap gap-3 mb-4">
           <button type="button" class="btn btn-warm btn-lg px-4" onclick="abrirModalRegistro('DEMO')">
@@ -378,53 +398,56 @@
               <!-- Vista 1 Año (Base) -->
               <div class="precio-vista-periodo" data-periodo="1_year">
                 {% set p1 = plan.periodos["1_year"] %}
-                <div class="d-flex align-items-baseline gap-2">
-                  <span class="price-number">${{ "{:,.2f}".format(p1.total) }}</span>
-                  <span class="text-muted small">/ año</span>
+                <div class="d-flex align-items-baseline gap-2 flex-wrap">
+                  <span class="price-number">${{ "{:,.2f}".format(p1.base_imponible) }}</span>
+                  <span class="text-muted small">/ año + IVA ({{ p1.iva_pct|int }}%)</span>
                 </div>
                 <div class="d-flex align-items-center justify-content-between mt-2 flex-wrap gap-1">
-                  <span class="text-muted small">Equivalente a <strong>${{ "%.2f"|format(p1.por_mes) }}/mes</strong></span>
+                  <span class="text-muted small">Total con IVA: <strong>${{ "{:,.2f}".format(p1.total) }}</strong> · Equivale a <strong>${{ "%.2f"|format(p1.por_mes) }}/mes</strong> + IVA</span>
                 </div>
                 <div class="mt-2 small fw-bold text-primary">
                   <i class="ti ti-credit-card me-1"></i> Hasta {{ p1.msi_meses }} meses sin intereses con tarjetas aliadas (${{ "{:,.2f}".format(p1.cuota_msi) }}/mes)
                   <a href="#" class="text-decoration-underline ms-1" data-bs-toggle="modal" data-bs-target="#modalBancosAliados">Ver bancos</a>
                 </div>
+                <div class="mt-1 small text-muted"><i class="ti ti-file-invoice me-1"></i>Se enviará la factura electrónica a tu correo.</div>
               </div>
 
               <!-- Vista 2 Años (-10%) -->
               <div class="precio-vista-periodo d-none" data-periodo="2_years">
                 {% set p2 = plan.periodos["2_years"] %}
                 <div class="d-flex align-items-baseline gap-2 flex-wrap">
-                  <span class="price-number">${{ "{:,.2f}".format(p2.total) }}</span>
+                  <span class="price-number">${{ "{:,.2f}".format(p2.base_imponible) }}</span>
                   <span class="text-muted text-decoration-line-through fs-3">${{ "{:,.2f}".format(p2.subtotal) }}</span>
-                  <span class="text-muted small">/ 2 años</span>
+                  <span class="text-muted small">/ 2 años + IVA ({{ p2.iva_pct|int }}%)</span>
                 </div>
                 <div class="d-flex align-items-center justify-content-between mt-2 flex-wrap gap-1">
                   <span class="save-pill">Ahorras ${{ "{:,.2f}".format(p2.ahorro) }}</span>
-                  <span class="text-muted small"><strong>${{ "{:,.2f}".format(p2.por_anio) }}/año</strong> · <strong>${{ "%.2f"|format(p2.por_mes) }}/mes</strong></span>
+                  <span class="text-muted small">Total con IVA: <strong>${{ "{:,.2f}".format(p2.total) }}</strong> · <strong>${{ "%.2f"|format(p2.por_mes) }}/mes</strong> + IVA</span>
                 </div>
                 <div class="mt-2 small fw-bold text-primary">
                   <i class="ti ti-credit-card me-1"></i> Hasta {{ p2.msi_meses }} meses sin intereses con tarjetas aliadas (${{ "{:,.2f}".format(p2.cuota_msi) }}/mes)
                   <a href="#" class="text-decoration-underline ms-1" data-bs-toggle="modal" data-bs-target="#modalBancosAliados">Ver bancos</a>
                 </div>
+                <div class="mt-1 small text-muted"><i class="ti ti-file-invoice me-1"></i>Se enviará la factura electrónica a tu correo.</div>
               </div>
 
               <!-- Vista 3 Años (-15%) -->
               <div class="precio-vista-periodo d-none" data-periodo="3_years">
                 {% set p3 = plan.periodos["3_years"] %}
                 <div class="d-flex align-items-baseline gap-2 flex-wrap">
-                  <span class="price-number">${{ "{:,.2f}".format(p3.total) }}</span>
+                  <span class="price-number">${{ "{:,.2f}".format(p3.base_imponible) }}</span>
                   <span class="text-muted text-decoration-line-through fs-3">${{ "{:,.2f}".format(p3.subtotal) }}</span>
-                  <span class="text-muted small">/ 3 años</span>
+                  <span class="text-muted small">/ 3 años + IVA ({{ p3.iva_pct|int }}%)</span>
                 </div>
                 <div class="d-flex align-items-center justify-content-between mt-2 flex-wrap gap-1">
                   <span class="save-pill">Ahorras ${{ "{:,.2f}".format(p3.ahorro) }}</span>
-                  <span class="text-muted small"><strong>${{ "{:,.2f}".format(p3.por_anio) }}/año</strong> · <strong>${{ "%.2f"|format(p3.por_mes) }}/mes</strong></span>
+                  <span class="text-muted small">Total con IVA: <strong>${{ "{:,.2f}".format(p3.total) }}</strong> · <strong>${{ "%.2f"|format(p3.por_mes) }}/mes</strong> + IVA</span>
                 </div>
                 <div class="mt-2 small fw-bold text-primary">
                   <i class="ti ti-credit-card me-1"></i> Hasta {{ p3.msi_meses }} meses sin intereses con tarjetas aliadas (${{ "{:,.2f}".format(p3.cuota_msi) }}/mes)
                   <a href="#" class="text-decoration-underline ms-1" data-bs-toggle="modal" data-bs-target="#modalBancosAliados">Ver bancos</a>
                 </div>
+                <div class="mt-1 small text-muted"><i class="ti ti-file-invoice me-1"></i>Se enviará la factura electrónica a tu correo.</div>
               </div>
             </div>
 
