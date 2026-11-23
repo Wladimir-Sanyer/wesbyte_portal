@@ -9,7 +9,8 @@ from __future__ import annotations
 import datetime
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
 
 import requests
 from lxml import etree
@@ -18,6 +19,12 @@ from zeep.helpers import serialize_object
 from zeep.transports import Transport
 
 logger = logging.getLogger("wesbyte_portal.sri_client")
+
+WSDL_DIR = Path(__file__).resolve().parent / "wsdl"
+LOCAL_PROD_WSDLS = {
+    "recepcion": WSDL_DIR / "RecepcionComprobantesOffline_prod.wsdl",
+    "autorizacion": WSDL_DIR / "AutorizacionComprobantesOffline_prod.wsdl",
+}
 
 WSDL_URLS = {
     "1": {
@@ -97,12 +104,34 @@ class SriSoapClient:
 
     def _get_transport(self) -> Transport:
         session = requests.Session()
+        # Evitar seguir redirecciones 302 rotas del balanceador SRI (ej. hacia 181.113.227.222)
+        session.max_redirects = 0
         return Transport(session=session, timeout=self.timeout_seconds, operation_timeout=self.timeout_seconds)
+
+    def _get_wsdl_source(self, service_key: str) -> str:
+        if self.ambiente == "2":
+            local_path = LOCAL_PROD_WSDLS.get(service_key)
+            if local_path and local_path.exists():
+                return str(local_path)
+        return self.urls[service_key]
+
+    def _call_with_retry(self, fn: Callable[[], Any], max_attempts: int = 3) -> Any:
+        last_exc: Optional[Exception] = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return fn()
+            except (requests.exceptions.TooManyRedirects, requests.exceptions.ConnectionError, requests.exceptions.Timeout) as exc:
+                last_exc = exc
+                logger.warning("Reintento SRI (%s/%s) por fallo/redirect de nodo SRI: %s", attempt, max_attempts, exc)
+                if attempt < max_attempts:
+                    time.sleep(1.0)
+        raise last_exc  # type: ignore[misc]
 
     def enviar_recepcion(self, xml_firmado_bytes: bytes) -> Dict[str, Any]:
         """Envía el XML firmado a RecepcionComprobantesOffline.validarComprobante."""
-        client = Client(wsdl=self.urls["recepcion"], transport=self._get_transport())
-        res = client.service.validarComprobante(xml=xml_firmado_bytes)
+        wsdl_src = self._get_wsdl_source("recepcion")
+        client = Client(wsdl=wsdl_src, transport=self._get_transport())
+        res = self._call_with_retry(lambda: client.service.validarComprobante(xml=xml_firmado_bytes))
         data = serialize_object(res) if not isinstance(res, dict) else res
 
         estado = str(data.get("estado") or "ERROR").upper()
@@ -129,8 +158,9 @@ class SriSoapClient:
 
     def consultar_autorizacion(self, clave_acceso: str) -> Dict[str, Any]:
         """Consulta AutorizacionComprobantesOffline.autorizacionComprobante por clave de acceso."""
-        client = Client(wsdl=self.urls["autorizacion"], transport=self._get_transport())
-        res = client.service.autorizacionComprobante(claveAccesoComprobante=clave_acceso)
+        wsdl_src = self._get_wsdl_source("autorizacion")
+        client = Client(wsdl=wsdl_src, transport=self._get_transport())
+        res = self._call_with_retry(lambda: client.service.autorizacionComprobante(claveAccesoComprobante=clave_acceso))
         data = serialize_object(res) if not isinstance(res, dict) else res
 
         aut_node = data.get("autorizaciones") or {}

@@ -47,7 +47,13 @@ logger = logging.getLogger("wesbyte_portal.sri_processor")
 
 
 def _esc_sql(val: Optional[str]) -> str:
-    return str(val or "").replace("\\", "\\\\").replace("'", "''")
+    return (
+        str(val or "")
+        .replace("\\", "\\\\")
+        .replace("'", "\\'")
+        .replace("\r", " ")
+        .replace("\n", " ")
+    )
 
 
 def _safe_str(val: Any, default: str = "") -> str:

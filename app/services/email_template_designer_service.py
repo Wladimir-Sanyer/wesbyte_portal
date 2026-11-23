@@ -48,19 +48,22 @@ CUOTA_IA_POR_PLAN: Dict[int, int] = {
 }
 
 
+MAX_AI_GENERATIONS_PER_MONTH = 5
+
+
 def get_ai_quota_for_plan(plan_id: int, plan_codigo: str = "", es_demo: bool = False) -> Tuple[bool, int]:
     """
     Determina si el plan del cliente tiene acceso al Editor Inteligente con IA
-    y cuál es su cuota mensual máxima de generaciones (máx. 10/mes).
+    y cuál es su cuota mensual máxima de generaciones (máx. 5/mes).
     """
     if es_demo:
         return False, 0
     cod = str(plan_codigo or "").strip().upper()
     pid = int(plan_id or 0)
     if pid >= 3 or "GOLD" in cod or "SUPER" in cod or "CUSTOM" in cod or "ENTERPRISE" in cod:
-        return True, 10
+        return True, MAX_AI_GENERATIONS_PER_MONTH
     if pid == 2 or "MEDIUM" in cod or "SILVER" in cod or "PRO" in cod:
-        return True, 10
+        return True, MAX_AI_GENERATIONS_PER_MONTH
     return False, 0
 
 
@@ -844,7 +847,7 @@ REGLAS OBLIGATORIAS E INQUEBRANTABLES:
     if not GEMINI_API_KEY:
         raise RuntimeError("No se ha configurado GEMINI_API_KEY en el servidor.")
 
-    models_to_try = list(dict.fromkeys([GEMINI_MODEL_EMAIL, "gemini-2.5-flash-lite"]))
+    models_to_try = ["gemini-3.5-flash-lite"]
     # Eliminar duplicados manteniendo orden
     seen_m = set()
     unique_models = [m for m in models_to_try if not (m in seen_m or seen_m.add(m))]
