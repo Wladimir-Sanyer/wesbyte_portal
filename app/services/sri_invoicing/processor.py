@@ -315,7 +315,7 @@ def emitir_y_enviar_factura_sync(datos_facturacion_id: int) -> Dict[str, Any]:
         "mejora_usuarios": "Usuarios Adicionales",
     }
     periodo_label = modalidad_labels.get(modalidad_pago, modalidad_pago.replace("_", " ").title())
-    descripcion_item = f"Servicio de Suscripción SaaS / CRM para Broker de Seguros - Wesbyte ({periodo_label})"
+    descripcion_item = f"SUSCRIPCION SAAS/CRM PARA ASESORES DE SEGUROS WESBYTE ({periodo_label})"
 
     # 4. Construir XML -> Firmar XAdES-BES -> Enviar al SRI
     try:
