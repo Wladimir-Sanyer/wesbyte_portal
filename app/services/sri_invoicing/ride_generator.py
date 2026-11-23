@@ -209,17 +209,22 @@ def generar_ride_pdf_bytes(
     c.drawRightString(170 * mm, y_top - 5 * mm, "Descuento")
     c.drawRightString(193 * mm, y_top - 5 * mm, "Total Sin Imp.")
 
-    y_row = y_top - 16 * mm
+    import textwrap
+    desc_lines = textwrap.wrap(str(descripcion_item or ""), width=45)[:2] or [""]
+    row_h = 12 * mm if len(desc_lines) > 1 else 9 * mm
+    y_row = y_top - (7 * mm + row_h)
     c.setFillColor(colors.white)
-    c.rect(14 * mm, y_row, 182 * mm, 9 * mm, stroke=1, fill=1)
+    c.rect(14 * mm, y_row, 182 * mm, row_h, stroke=1, fill=1)
     c.setFillColor(colors.black)
-    c.setFont("Helvetica", 8.2)
-    c.drawString(17 * mm, y_row + 3 * mm, codigo_item[:12])
-    c.drawString(40 * mm, y_row + 3 * mm, "1.00")
-    c.drawString(55 * mm, y_row + 3 * mm, descripcion_item[:52])
-    c.drawRightString(148 * mm, y_row + 3 * mm, f"${float(monto_base):.2f}")
-    c.drawRightString(170 * mm, y_row + 3 * mm, f"${float(descuento):.2f}")
-    c.drawRightString(193 * mm, y_row + 3 * mm, f"${float(monto_base):.2f}")
+    c.setFont("Helvetica", 8.0)
+    y_txt = y_row + row_h - 4.5 * mm
+    c.drawString(17 * mm, y_txt, codigo_item[:12])
+    c.drawString(40 * mm, y_txt, "1.00")
+    for idx_line, d_line in enumerate(desc_lines):
+        c.drawString(55 * mm, y_txt - (idx_line * 3.8 * mm), d_line)
+    c.drawRightString(148 * mm, y_txt, f"${float(monto_base):.2f}")
+    c.drawRightString(170 * mm, y_txt, f"${float(descuento):.2f}")
+    c.drawRightString(193 * mm, y_txt, f"${float(monto_base):.2f}")
 
     # 5. Información Adicional + Forma de Pago (izquierda) y Totales (derecha)
     y_bot = y_row - 48 * mm

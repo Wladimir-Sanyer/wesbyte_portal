@@ -306,8 +306,16 @@ def emitir_y_enviar_factura_sync(datos_facturacion_id: int) -> Dict[str, Any]:
     correo_comp = str(row.get("correo_facturacion") or "").strip()
     direccion_comp = str(row.get("direccion") or "Ecuador").strip()
     telefono_comp = str(row.get("telefono") or "").strip()
-    modalidad_pago = str(pago_row.get("modalidad_pago") or "pago_unico_1_year")
-    descripcion_item = f"Suscripción Plataforma SaaS Wesbyte ({modalidad_pago})"
+    modalidad_pago = str(pago_row.get("modalidad_pago") or "pago_unico_1_year").strip().lower()
+    modalidad_labels = {
+        "pago_unico_1_year": "Plan Anual",
+        "pago_unico_2_years": "Plan 2 Años",
+        "pago_unico_3_years": "Plan 3 Años",
+        "upgrade_plan": "Mejora de Plan",
+        "mejora_usuarios": "Usuarios Adicionales",
+    }
+    periodo_label = modalidad_labels.get(modalidad_pago, modalidad_pago.replace("_", " ").title())
+    descripcion_item = f"Servicio de Suscripción SaaS / CRM para Broker de Seguros - Wesbyte ({periodo_label})"
 
     # 4. Construir XML -> Firmar XAdES-BES -> Enviar al SRI
     try:
