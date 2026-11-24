@@ -209,7 +209,6 @@ def generar_ride_pdf_bytes(
     c.drawRightString(170 * mm, y_top - 5 * mm, "Descuento")
     c.drawRightString(193 * mm, y_top - 5 * mm, "Total Sin Imp.")
 
-    import textwrap
     desc_lines = textwrap.wrap(str(descripcion_item or ""), width=45)[:2] or [""]
     row_h = 12 * mm if len(desc_lines) > 1 else 9 * mm
     y_row = y_top - (7 * mm + row_h)
