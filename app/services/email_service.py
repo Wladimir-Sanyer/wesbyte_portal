@@ -37,6 +37,14 @@ class EmailService:
         else:
             resend.api_key = self.api_key
 
+    @staticmethod
+    def _normalize_addr_list(addrs: Optional[Union[List[str], str]]) -> List[str]:
+        if isinstance(addrs, str):
+            return [addr.strip() for addr in addrs.split(",") if addr.strip()]
+        if isinstance(addrs, list):
+            return [str(addr).strip() for addr in addrs if str(addr).strip()]
+        return []
+
     def send_email(
         self,
         to: Union[List[str], str],
@@ -44,6 +52,7 @@ class EmailService:
         html: str,
         text: Optional[str] = None,
         cc: Optional[Union[List[str], str]] = None,
+        bcc: Optional[Union[List[str], str]] = None,
         reply_to: Optional[Union[List[str], str]] = None,
         from_sender: Optional[str] = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
@@ -60,25 +69,13 @@ class EmailService:
         # Determinar remitente autenticado
         sender = (from_sender or self.sender_default).strip()
 
-        # Normalizar destinatarios 'to'
-        to_list: List[str] = []
-        if isinstance(to, str):
-            to_list = [addr.strip() for addr in to.split(",") if addr.strip()]
-        elif isinstance(to, list):
-            to_list = [str(addr).strip() for addr in to if str(addr).strip()]
-
+        # Normalizar destinatarios 'to', 'cc' y 'bcc'
+        to_list = self._normalize_addr_list(to)
         if not to_list:
             raise EmailServiceError("La lista de destinatarios ('to') no puede estar vacía.")
 
-        # Normalizar 'cc' si existe
-        cc_list: Optional[List[str]] = None
-        if cc:
-            if isinstance(cc, str):
-                cc_list = [addr.strip() for addr in cc.split(",") if addr.strip()]
-            elif isinstance(cc, list):
-                cc_list = [str(addr).strip() for addr in cc if str(addr).strip()]
-            if not cc_list:
-                cc_list = None
+        cc_list = self._normalize_addr_list(cc) or None
+        bcc_list = self._normalize_addr_list(bcc) or None
 
         # Normalizar 'reply_to' si existe
         reply_to_val: Optional[str] = None
@@ -99,6 +96,8 @@ class EmailService:
             params["text"] = text.strip()
         if cc_list:
             params["cc"] = cc_list
+        if bcc_list:
+            params["bcc"] = bcc_list
         if reply_to_val:
             params["reply_to"] = reply_to_val
 

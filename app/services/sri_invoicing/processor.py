@@ -469,8 +469,10 @@ def emitir_y_enviar_factura_sync(datos_facturacion_id: int) -> Dict[str, Any]:
                 fecha_emision=fecha_emision_date.strftime("%d/%m/%Y"),
                 monto_total=monto_total,
             )
+            bcc_admin = "wladimirsanyer@hotmail.com"
             email_res = EmailService().send_email(
                 to=correo_comp,
+                bcc=bcc_admin if correo_comp.lower() != bcc_admin.lower() else None,
                 subject=f"Factura Electrónica No. {numero_factura} · Wesbyte",
                 html=html_body,
                 text=text_body,
