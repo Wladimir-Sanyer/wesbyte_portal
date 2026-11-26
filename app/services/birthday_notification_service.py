@@ -245,27 +245,17 @@ class BirthdayNotificationService:
         estado: str,
         error_detalle: Optional[str] = None,
     ) -> None:
-        """Registra el evento de envío de correo en `wesbyte.administracion.logs_emails`."""
-        try:
-            next_id = get_next_id("logs_emails", WESBYTE_CENTRAL_DATASET)
-            append_rows(
-                WESBYTE_CENTRAL_DATASET,
-                "logs_emails",
-                [
-                    {
-                        "id": next_id,
-                        "cliente_id": cliente_id,
-                        "destinatario": destinatario,
-                        "motivo": motivo,
-                        "estado": estado,
-                        "error_detalle": error_detalle,
-                        "created_at": datetime.datetime.now(datetime.timezone.utc),
-                        "usuario_id": None,
-                    }
-                ],
-            )
-        except Exception as exc:
-            logger.warning(f"No se pudo guardar log de email en BigQuery para {destinatario}: {exc}")
+        """Registra el evento de envío de correo en `wesbyte.administracion.logs_emails` y actualiza el consumo."""
+        from app.services.consumo_service import log_email_event
+
+        log_email_event(
+            cliente_id=cliente_id,
+            destinatario=destinatario,
+            motivo=motivo,
+            estado=estado,
+            error_detalle=error_detalle,
+            increment_quota=(str(estado).strip().upper() == "ENVIADO"),
+        )
 
     def run_birthday_process(
         self,

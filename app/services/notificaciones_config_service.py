@@ -160,15 +160,18 @@ NOTIFICACIONES_CATALOGO: List[Dict[str, Any]] = [
         "default_email": True,
         "default_asunto_email": "Condiciones de renovación · Póliza {numero_contrato}",
         "default_mensaje_email": (
-            "Estimado/a cliente (CI: {cedula}),\n\n"
+            "Estimado/a {nombres_completos_razon_social} (CI: {cedula}),\n\n"
             "Le compartimos las condiciones de renovación para su póliza {numero_contrato} "
             "({ramos} - {aseguradora}, Plan {plan}) con fecha de vigencia {fecha_vigencia}.\n\n"
-            "Quedamos atentos a su confirmación.\n{nombre_agente} · {broker}"
+            "{tabla_formas_pago}\n\n"
+            "{boton_confirmacion}\n\n"
+            "Su asesor {nombre_agente} · {broker} queda a su disposición."
         ),
         "default_mensaje_whatsapp": (
-            "Hola, te enviamos desde *{broker}* las condiciones de renovación de tu póliza "
-            "*{numero_contrato}* ({aseguradora} - {ramos}, vigencia {fecha_vigencia}). "
-            "Escríbenos si deseas confirmar con tu agente *{nombre_agente}*."
+            "Hola *{nombres_completos_razon_social}*, te enviamos desde *{broker}* las condiciones de renovación de tu póliza "
+            "*{numero_contrato}* ({aseguradora} - {ramos}, vigencia {fecha_vigencia}).\n\n"
+            "{tabla_formas_pago}\n\n"
+            "{boton_confirmacion}"
         ),
     },
 ]

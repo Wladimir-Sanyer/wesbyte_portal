@@ -128,6 +128,18 @@ VARIABLE_LOGO_EMAIL: Dict[str, str] = {
     "ejemplo": "[Logo de la Agencia]",
 }
 
+VARIABLE_TABLA_FORMAS_PAGO: Dict[str, str] = {
+    "key": "tabla_formas_pago",
+    "label": "Tabla de formas de pago",
+    "ejemplo": "Contado $600,00 · Débito 12×$50,00 · Tarjeta 6×$100,00",
+}
+
+VARIABLE_BOTON_CONFIRMACION: Dict[str, str] = {
+    "key": "boton_confirmacion",
+    "label": "Botón de confirmación / dudas",
+    "ejemplo": "[Confirmar renovación] / [Tengo dudas, contactar asesor]",
+}
+
 DEFAULT_PRESET_TEXTS: Dict[str, Dict[str, str]] = {
     "proxima_renovacion": {
         "titulo": "Aviso de Próxima Renovación",
@@ -206,6 +218,9 @@ def get_allowed_variables_for_notification(notificacion_codigo: str, canal: str 
         vars_list = [v.copy() for v in PLANTILLA_VARIABLES]
         if cod == "regularizaciones":
             vars_list.append(VARIABLE_REGULARIZACIONES.copy())
+        elif cod == "condiciones_renovacion":
+            vars_list.append(VARIABLE_TABLA_FORMAS_PAGO.copy())
+            vars_list.append(VARIABLE_BOTON_CONFIRMACION.copy())
 
     if canal == "email":
         vars_list.append(VARIABLE_LOGO_EMAIL.copy())
@@ -231,7 +246,12 @@ def normalize_variable_brackets_to_double(text: str) -> str:
     """Convierte {variable} de lista blanca a {{variable}} para visualización uniforme en el diseñador."""
     if not text:
         return ""
-    all_keys = {v["key"] for v in PLANTILLA_VARIABLES} | {"regularizaciones_faltantes", "logo"}
+    all_keys = {v["key"] for v in PLANTILLA_VARIABLES} | {
+        "regularizaciones_faltantes",
+        "tabla_formas_pago",
+        "boton_confirmacion",
+        "logo",
+    }
     out = re.sub(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}", r"{{\1}}", text)
 
     def _repl(m: re.Match[str]) -> str:
@@ -847,7 +867,7 @@ REGLAS OBLIGATORIAS E INQUEBRANTABLES:
     if not GEMINI_API_KEY:
         raise RuntimeError("No se ha configurado GEMINI_API_KEY en el servidor.")
 
-    models_to_try = ["gemini-3.5-flash-lite"]
+    models_to_try = [GEMINI_MODEL_EMAIL]
     # Eliminar duplicados manteniendo orden
     seen_m = set()
     unique_models = [m for m in models_to_try if not (m in seen_m or seen_m.add(m))]
@@ -860,6 +880,7 @@ REGLAS OBLIGATORIAS E INQUEBRANTABLES:
         for model_name in unique_models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
             payload = {
+                "store": False,
                 "system_instruction": {"parts": [{"text": system_instruction}]},
                 "contents": [{"role": "user", "parts": [{"text": user_message}]}],
                 "generationConfig": {

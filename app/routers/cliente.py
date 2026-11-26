@@ -2117,6 +2117,7 @@ class TestNotificationRequest(BaseModel):
     asunto: Optional[str] = None
     mensaje: Optional[str] = None
     es_html: Optional[bool] = None
+    tipo_plantilla: Optional[str] = "B"
 
 
 @router.post("/api/notificaciones/plantillas/probar")
@@ -2170,6 +2171,7 @@ async def api_probar_plantilla_notificacion(request: Request, payload: TestNotif
             asunto=payload.asunto,
             mensaje=payload.mensaje,
             es_html=payload.es_html,
+            tipo_plantilla=payload.tipo_plantilla,
         )
         if es_demo:
             try:
@@ -2335,7 +2337,7 @@ async def api_generar_plantilla_email_ia(request: Request, payload: Dict[str, An
             client_id=cliente_id,
             notificacion_codigo=notificacion_codigo,
             prompt_resumen=instrucciones[:250],
-            modelo=resultado.get("modelo_usado", "gemini-2.5-flash-lite"),
+            modelo=resultado.get("modelo_usado", "gemini-3.8-flash"),
         )
         nuevas_usadas = usadas + 1
         disponibles = max(0, cuota_total - nuevas_usadas)

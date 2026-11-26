@@ -107,8 +107,97 @@ def build_dummy_pdf_bytes(
     return bytes(pdf)
 
 
-def get_dummy_variables(broker_nombre: str = "Seguros Alianza") -> Dict[str, str]:
+def _build_dummy_tabla_pagos(canal: str, tipo_plantilla: str) -> str:
+    if canal != "email":
+        if tipo_plantilla == "A":
+            return (
+                "*Opciones de pago (Prima anual: $2.184,00):*\n"
+                "• Contado: 1 cuota(s) de $2.184,00\n"
+                "• Débito bancario: 12 cuota(s) de $182,00\n"
+                "• Tarjeta de crédito: 6 cuota(s) de $364,00"
+            )
+        return (
+            "*Opciones de pago (Prima anual: $600,00):*\n"
+            "• Contado: 1 cuota(s) de $600,00\n"
+            "• Débito bancario: 12 cuota(s) de $50,00\n"
+            "• Tarjeta de crédito: 6 cuota(s) de $100,00"
+        )
+
+    if tipo_plantilla == "A":
+        total = "$2.184,00"
+        rows_fp = (
+            '<tr><td style="padding:8px 12px;border-bottom:1px solid #E2E8F0;">Contado</td><td align="center" style="padding:8px 12px;border-bottom:1px solid #E2E8F0;">1</td><td align="right" style="padding:8px 12px;border-bottom:1px solid #E2E8F0;font-weight:700;">$2.184,00</td></tr>'
+            '<tr><td style="padding:8px 12px;border-bottom:1px solid #E2E8F0;">Débito bancario</td><td align="center" style="padding:8px 12px;border-bottom:1px solid #E2E8F0;">12</td><td align="right" style="padding:8px 12px;border-bottom:1px solid #E2E8F0;font-weight:700;">$182,00</td></tr>'
+            '<tr><td style="padding:8px 12px;">Tarjeta de crédito</td><td align="center" style="padding:8px 12px;">6</td><td align="right" style="padding:8px 12px;font-weight:700;">$364,00</td></tr>'
+        )
+    else:
+        total = "$600,00"
+        rows_fp = (
+            '<tr><td style="padding:8px 12px;border-bottom:1px solid #E2E8F0;">Contado</td><td align="center" style="padding:8px 12px;border-bottom:1px solid #E2E8F0;">1</td><td align="right" style="padding:8px 12px;border-bottom:1px solid #E2E8F0;font-weight:700;">$600,00</td></tr>'
+            '<tr><td style="padding:8px 12px;border-bottom:1px solid #E2E8F0;">Débito bancario</td><td align="center" style="padding:8px 12px;border-bottom:1px solid #E2E8F0;">12</td><td align="right" style="padding:8px 12px;border-bottom:1px solid #E2E8F0;font-weight:700;">$50,00</td></tr>'
+            '<tr><td style="padding:8px 12px;">Tarjeta de crédito</td><td align="center" style="padding:8px 12px;">6</td><td align="right" style="padding:8px 12px;font-weight:700;">$100,00</td></tr>'
+        )
+
+    return (
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'style="border:1px solid #CBD5E1;border-radius:8px;overflow:hidden;margin:10px 0;font-size:13px;">'
+        '<tr style="background:#1B4F8C;color:#FFFFFF;">'
+        '<td colspan="2" style="padding:10px 12px;font-weight:600;color:#FFFFFF;">Prima total anual</td>'
+        f'<td align="right" style="padding:10px 12px;font-size:16px;font-weight:700;color:#FFFFFF;">{total}</td>'
+        '</tr>'
+        '<tr style="background:#F1F5F9;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;">'
+        '<td style="padding:6px 12px;">Forma de pago</td>'
+        '<td align="center" style="padding:6px 12px;">Cuotas</td>'
+        '<td align="right" style="padding:6px 12px;">Valor por cuota</td>'
+        '</tr>'
+        f'{rows_fp}'
+        '</table>'
+    )
+
+
+def _build_dummy_boton_confirmacion(canal: str, tipo_plantilla: str) -> str:
+    if canal != "email":
+        if tipo_plantilla == "A":
+            return (
+                "Su póliza se renovará automáticamente.\n"
+                "📧 Le enviamos el detalle completo y las opciones de confirmación a su correo: *cliente@ejemplo.com*"
+            )
+        return (
+            "Por favor confírmenos su renovación.\n"
+            "📧 Le enviamos el detalle completo y las opciones de confirmación a su correo: *cliente@ejemplo.com*"
+        )
+
+    if tipo_plantilla == "A":
+        return (
+            '<div style="border:1.5px solid #1B4F8C;border-radius:10px;padding:16px;text-align:center;margin:12px 0;">'
+            '<div style="font-size:15px;font-weight:700;color:#1B4F8C;margin-bottom:6px;">Su póliza se renovará automáticamente</div>'
+            '<div style="font-size:12.5px;color:#334155;margin-bottom:12px;">No necesita hacer ningún trámite. Su cobertura continuará en las mismas condiciones.</div>'
+            '<a href="https://wesbyte.app/renovacion/ejemplo?accion=si&c=em" target="_blank" '
+            'style="display:block;background:#229954;color:#FFFFFF;text-decoration:none;font-weight:700;font-size:13.5px;padding:11px 16px;border-radius:7px;">'
+            '&#10003; CONFIRMO MI RENOVACIÓN</a>'
+            '</div>'
+        )
+    return (
+        '<div style="border:1.5px solid #1B4F8C;border-radius:10px;padding:16px;text-align:center;margin:12px 0;">'
+        '<div style="font-size:15px;font-weight:700;color:#1B4F8C;margin-bottom:6px;">Su póliza requiere su confirmación</div>'
+        '<div style="font-size:12.5px;color:#334155;margin-bottom:12px;">Elija su forma de pago y confirme su renovación antes de la fecha límite.</div>'
+        '<a href="https://wesbyte.app/renovacion/ejemplo?accion=si&c=em" target="_blank" '
+        'style="display:block;background:#229954;color:#FFFFFF;text-decoration:none;font-weight:700;font-size:13.5px;padding:11px 16px;border-radius:7px;margin-bottom:8px;">'
+        '&#10003; SÍ, RENOVAR MI PÓLIZA</a>'
+        '<a href="https://wesbyte.app/renovacion/ejemplo?accion=dudas&c=em" target="_blank" '
+        'style="display:block;background:#FFFFFF;color:#1B4F8C;border:1.5px solid #1B4F8C;text-decoration:none;font-weight:700;font-size:13px;padding:10px 16px;border-radius:7px;">'
+        'Tengo dudas, que me contacte mi asesor</a>'
+        '</div>'
+    )
+
+
+def get_dummy_variables(
+    broker_nombre: str = "Seguros Alianza",
+    tipo_plantilla: str = "B",
+    canal: str = "email",
+) -> Dict[str, str]:
     """Construye el mapa completo de variables ficticias y sus alias comunes."""
+    tipo = "A" if str(tipo_plantilla or "").strip().upper() == "A" else "B"
     vars_map: Dict[str, str] = {
         v["key"]: v["ejemplo"] for v in PLANTILLA_VARIABLES
     }
@@ -122,18 +211,26 @@ def get_dummy_variables(broker_nombre: str = "Seguros Alianza") -> Dict[str, str
             "nombres_completos": vars_map["nombres_completos_razon_social"],
             "poliza": vars_map["numero_contrato"],
             "fecha_vencimiento": vars_map["fecha_vigencia"],
-            "ramo": vars_map["ramos"],
+            "ramos": "Médico / Vida" if tipo == "A" else "Vehículos",
+            "ramo": "Médico / Vida" if tipo == "A" else "Vehículos",
             "regularizaciones_faltantes": "• Pago inicial pendiente\n• Firma de solicitud",
+            "tabla_formas_pago": _build_dummy_tabla_pagos(canal, tipo),
+            "boton_confirmacion": _build_dummy_boton_confirmacion(canal, tipo),
         }
     )
     return vars_map
 
 
-def render_template_with_dummy_data(text: str, broker_nombre: str = "Seguros Alianza") -> str:
+def render_template_with_dummy_data(
+    text: str,
+    broker_nombre: str = "Seguros Alianza",
+    tipo_plantilla: str = "B",
+    canal: str = "email",
+) -> str:
     """Reemplaza todas las variables {{clave}} y {clave} en el texto usando datos ficticios realistas."""
     if not text:
         return ""
-    vars_map = get_dummy_variables(broker_nombre)
+    vars_map = get_dummy_variables(broker_nombre, tipo_plantilla=tipo_plantilla, canal=canal)
 
     def _replace(match: re.Match[str]) -> str:
         key = match.group(1).strip()
@@ -148,6 +245,7 @@ def _wrap_test_email_html(
     broker_nombre: str,
     es_html: bool = False,
     logo_url: str = "",
+    tipo_plantilla: str = "B",
 ) -> str:
     logo_norm = normalize_drive_logo_url(logo_url) if logo_url else ""
     logo_img_html = (
@@ -156,20 +254,38 @@ def _wrap_test_email_html(
         if logo_norm
         else ""
     )
+    tabla_html = _build_dummy_tabla_pagos("email", tipo_plantilla)
+    boton_html = _build_dummy_boton_confirmacion("email", tipo_plantilla)
 
     if es_html:
-        content_html = body.replace("{{logo}}", logo_img_html).replace("{logo}", logo_img_html)
+        content_html = (
+            body.replace("{{logo}}", logo_img_html)
+            .replace("{logo}", logo_img_html)
+            .replace("{{tabla_formas_pago}}", tabla_html)
+            .replace("{tabla_formas_pago}", tabla_html)
+            .replace("{{boton_confirmacion}}", boton_html)
+            .replace("{boton_confirmacion}", boton_html)
+        )
         if re.search(r"<!DOCTYPE|<html\b|<table\b", content_html, re.IGNORECASE):
             return content_html
     else:
         logo_token = "__WESBYTE_LOGO_PLACEHOLDER__"
-        body_tok = body.replace("{{logo}}", logo_token).replace("{logo}", logo_token)
+        tabla_token = "__WESBYTE_TABLA_PAGOS_PLACEHOLDER__"
+        boton_token = "__WESBYTE_BOTON_CONF_PLACEHOLDER__"
+        body_tok = (
+            body.replace("{{logo}}", logo_token)
+            .replace("{logo}", logo_token)
+            .replace("{{tabla_formas_pago}}", tabla_token)
+            .replace("{tabla_formas_pago}", tabla_token)
+            .replace("{{boton_confirmacion}}", boton_token)
+            .replace("{boton_confirmacion}", boton_token)
+        )
         paragraphs = [
-            f"<p style='margin:0 0 12px 0;line-height:1.6;'>{html.escape(p).replace(chr(10), '<br>').replace(logo_token, logo_img_html)}</p>"
+            f"<p style='margin:0 0 12px 0;line-height:1.6;'>{html.escape(p).replace(chr(10), '<br>').replace(logo_token, logo_img_html).replace(tabla_token, tabla_html).replace(boton_token, boton_html)}</p>"
             for p in body_tok.split("\n\n")
             if p.strip()
         ]
-        content_html = "".join(paragraphs) or f"<p>{html.escape(body_tok).replace(logo_token, logo_img_html)}</p>"
+        content_html = "".join(paragraphs) or f"<p>{html.escape(body_tok).replace(logo_token, logo_img_html).replace(tabla_token, tabla_html).replace(boton_token, boton_html)}</p>"
 
     return (
         "<div style='font-family:Inter,Arial,sans-serif;max-width:620px;margin:0 auto;"
@@ -210,6 +326,7 @@ async def send_test_notification(
     asunto: Optional[str] = None,
     mensaje: Optional[str] = None,
     es_html: Optional[bool] = None,
+    tipo_plantilla: Optional[str] = "B",
 ) -> Dict[str, Any]:
     """
     Envía una notificación de prueba al destino indicado por correo (Resend)
@@ -267,8 +384,35 @@ async def send_test_notification(
     if canal_norm == "email" and "{logo}" in resolved_subject:
         raise ValueError("La variable {logo} solo puede usarse en el cuerpo del correo, no en el asunto.")
 
-    rendered_msg = render_template_with_dummy_data(resolved_msg, broker_nombre)
-    rendered_subject = render_template_with_dummy_data(resolved_subject, broker_nombre)
+    tipo_ren = "A" if str(tipo_plantilla or "").strip().upper() == "A" else "B"
+    # En email con texto plano (es_html=False), protegemos tabla/boton antes de html.escape en _wrap_test_email_html
+    if canal_norm == "email" and not resolved_html:
+        raw_msg_para_wrap = re.sub(
+            r"\{\{\s*(tabla_formas_pago|boton_confirmacion)\s*\}\}",
+            r"{\1}",
+            resolved_msg,
+        )
+        # Reemplazar resto de variables sin tocar tabla_formas_pago ni boton_confirmacion
+        vars_sin_bloques = get_dummy_variables(broker_nombre, tipo_plantilla=tipo_ren, canal="email")
+        vars_sin_bloques["tabla_formas_pago"] = "{tabla_formas_pago}"
+        vars_sin_bloques["boton_confirmacion"] = "{boton_confirmacion}"
+        rendered_msg = re.sub(
+            r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}",
+            lambda m: vars_sin_bloques.get(m.group(1).strip(), m.group(0)),
+            raw_msg_para_wrap,
+        )
+        rendered_msg = re.sub(
+            r"(?<!\{)\{([a-zA-Z0-9_]+)\}(?!\})",
+            lambda m: vars_sin_bloques.get(m.group(1).strip(), m.group(0)),
+            rendered_msg,
+        )
+    else:
+        rendered_msg = render_template_with_dummy_data(
+            resolved_msg, broker_nombre, tipo_plantilla=tipo_ren, canal=canal_norm
+        )
+    rendered_subject = render_template_with_dummy_data(
+        resolved_subject, broker_nombre, tipo_plantilla=tipo_ren, canal=canal_norm
+    )
 
     incluye_pdf = code in NOTIFICACIONES_CON_PDF
     pdf_bytes: Optional[bytes] = None
@@ -286,6 +430,7 @@ async def send_test_notification(
             broker_nombre,
             es_html=resolved_html,
             logo_url=str(cliente_info.get("logo") or ""),
+            tipo_plantilla=tipo_ren,
         )
         cleaned_text_msg = rendered_msg.replace("{logo}", "").strip()
         text_body = re.sub(r"<[^>]+>", "", cleaned_text_msg) if resolved_html else cleaned_text_msg

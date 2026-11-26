@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import List, Optional, Any, Dict
 from fastapi import APIRouter, Depends, Header, HTTPException, status
@@ -6,6 +7,7 @@ from pydantic import BaseModel, EmailStr, Field
 from app.config import INTERNAL_EMAIL_SERVICE_KEY
 from app.services.email_service import EmailService, EmailServiceError
 from app.services.birthday_notification_service import BirthdayNotificationService
+from app.services.consumo_service import log_email_event, resolve_cliente_id
 
 logger = logging.getLogger("wesbyte_portal.routers.internal_notifications")
 
@@ -52,6 +54,10 @@ class DirectEmailSendRequest(BaseModel):
     from_sender: Optional[str] = Field(None, description="Remitente completo (ej. 'Seguros Cóndor <notifications@wesbyte.app>')")
     from_name: Optional[str] = Field(None, description="Nombre del broker (ej. 'Seguros Cóndor'); autoformatea a '{from_name} <notifications@wesbyte.app>'")
     attachments: Optional[List[EmailAttachment]] = Field(None, description="Lista opcional de archivos adjuntos (ej. PDFs en Base64 o URL)")
+    cliente_id: Optional[int] = Field(None, description="ID del cliente/broker en wesbyte.administracion.clientes para auditoría y consumo")
+    dataset_id: Optional[str] = Field(None, description="Dataset del broker (alternativa a cliente_id)")
+    motivo: Optional[str] = Field(None, description="Motivo o categoría del envío para logs_emails")
+    usuario_id: Optional[int] = Field(None, description="ID del usuario que originó el envío (opcional)")
 
 
 class BirthdayDryRunRequest(BaseModel):
@@ -73,6 +79,33 @@ class BirthdayDryRunRequest(BaseModel):
 # ============================================================================
 # ENDPOINTS
 # ============================================================================
+def _audit_direct_email(
+    payload: DirectEmailSendRequest,
+    estado: str,
+    error_detalle: Optional[str] = None,
+) -> None:
+    """Registra el envío en logs_emails y actualiza consumos_mensuales si se identifica el cliente."""
+    try:
+        cid = resolve_cliente_id(
+            cliente_id=payload.cliente_id,
+            dataset_id=payload.dataset_id,
+            broker_email=payload.reply_to,
+        )
+        if cid is None:
+            return
+        log_email_event(
+            cliente_id=cid,
+            destinatario=", ".join(payload.to),
+            motivo=payload.motivo or payload.subject,
+            estado=estado,
+            error_detalle=error_detalle,
+            usuario_id=payload.usuario_id,
+            increment_quota=(estado == "enviado"),
+        )
+    except Exception as exc:
+        logger.warning("Error auditando envío de correo directo: %s", exc)
+
+
 @router.post(
     "/emails/send",
     summary="Despacho genérico directo de correos vía Resend",
@@ -99,8 +132,10 @@ async def send_direct_email(payload: DirectEmailSendRequest) -> Dict[str, Any]:
             from_sender=sender,
             attachments=atts,
         )
+        await asyncio.to_thread(_audit_direct_email, payload, "enviado", None)
         return resultado
     except EmailServiceError as exc:
+        await asyncio.to_thread(_audit_direct_email, payload, "error", str(exc))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error despachando correo con Resend: {str(exc)}",

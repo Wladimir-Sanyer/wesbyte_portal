@@ -1600,7 +1600,7 @@
                           <label class="form-label fw-bold small mb-0 text-dark">
                             <i class="ti ti-wand me-1 text-purple"></i> Pega tu código HTML externo o describe en español el diseño que deseas:
                           </label>
-                          <span class="badge bg-purple-lt text-purple" style="font-size:10px;">Gemini 2.5 Flash-Lite · Email-Safe</span>
+                          <span class="badge bg-purple-lt text-purple" style="font-size:10px;">Gemini 3.8 Flash · Email-Safe</span>
                         </div>
                         <textarea class="form-control font-monospace"
                                   rows="6"
@@ -2270,6 +2270,14 @@
             <div class="fw-bold text-dark fs-4" id="pruebaNotifNombre">—</div>
           </div>
 
+          <div class="mb-3" id="pruebaTipoPlantillaGroup" style="display:none;">
+            <label class="form-label fw-bold" for="pruebaNotifTipoPlantilla">Variante de plantilla (Ramo)</label>
+            <select class="form-select" id="pruebaNotifTipoPlantilla">
+              <option value="B">Plantilla B · Vehículos / Ramos Generales (Con confirmación)</option>
+              <option value="A">Plantilla A · Médicos / Vida (Renovación automática)</option>
+            </select>
+          </div>
+
           <div class="mb-3">
             <label class="form-label fw-bold" id="pruebaNotifDestinoLabel" for="pruebaNotifDestino">Destino</label>
             <input type="text" class="form-control" id="pruebaNotifDestino" required>
@@ -2795,7 +2803,7 @@
 
   function normalizeToDoubleBraces(text) {
     let s = String(text || "");
-    const allKeys = new Set(PLANTILLA_VARS.map(v => v.key).concat(["regularizaciones_faltantes", "logo"]));
+    const allKeys = new Set(PLANTILLA_VARS.map(v => v.key).concat(["regularizaciones_faltantes", "tabla_formas_pago", "boton_confirmacion", "logo"]));
     s = s.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, "{{$1}}");
     s = s.replace(/(?<!\{)\{([a-zA-Z0-9_]+)\}(?!\})/g, (m, k) => allKeys.has(k) ? `{{${k}}}` : m);
     return s;
@@ -2807,7 +2815,8 @@
       const defs = n.preset_defaults || {};
       const hasCustomHtml = Boolean(n.email_es_html && n.email_mensaje && n.email_mensaje.trim());
       emStateByNotif[n.codigo] = {
-        mode: cfg.mode || (hasCustomHtml && cfg.mode === "ai" ? "ai" : "preset"),
+        codigo: n.codigo,
+        mode: n.codigo === "condiciones_renovacion" ? "preset" : (cfg.mode || (hasCustomHtml && cfg.mode === "ai" ? "ai" : "preset")),
         presetId: cfg.presetId || "clasica",
         primaryColor: cfg.primaryColor || "#1e3a8a",
         asunto: normalizeToDoubleBraces(n.email_asunto || ""),
@@ -2827,6 +2836,20 @@
   function buildClientPresetEmailHtml(state, codigo) {
     const preset = ["clasica", "moderna", "minimalista"].includes(state.presetId) ? state.presetId : "clasica";
     const color = /^#[0-9a-fA-F]{6}$/.test(state.primaryColor || "") ? state.primaryColor : "#1e3a8a";
+    const isCondRenov = (codigo || state.codigo || emSelectedNotifCode) === "condiciones_renovacion";
+    const bloquesCondClasica = isCondRenov
+      ? `
+          <!-- FORMAS DE PAGO Y BOTONES (CONDICIONES DE RENOVACION) -->
+          <tr>
+            <td style="padding:10px 18px 0;">
+              {{tabla_formas_pago}}
+              {{boton_confirmacion}}
+            </td>
+          </tr>`
+      : "";
+    const bloquesCondInner = isCondRenov
+      ? `\n              <div style="margin-top:14px;">{{tabla_formas_pago}}</div>\n              <div style="margin-top:12px;">{{boton_confirmacion}}</div>`
+      : "";
     const tituloHtml = escapeHtml(state.titulo || "");
     const saludoHtml = escapeHtml(state.saludo || "").replace(/\n/g, "<br />");
     const introHtml = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.65;color:#334155;margin:0;">${escapeHtml(state.intro || "").replace(/\n/g, "<br />")}</div>`;
@@ -2954,7 +2977,7 @@
                 ${introClasicaHtml}
               </p>
             </td>
-          </tr>${tableClasica}
+          </tr>${tableClasica}${bloquesCondClasica}
           <!-- CONTACTO -->
           <tr>
             <td style="padding:10px 18px 0;">
@@ -3016,7 +3039,7 @@
               <h1 style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:21px;font-weight:bold;color:#0f172a;line-height:1.3;">${tituloHtml}</h1>
               <p style="margin:0 0 14px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:${color};">${saludoHtml}</p>
               ${introHtml}
-              ${tableModerna}
+              ${tableModerna}${bloquesCondInner}
               <div style="margin-top:16px;">${cierreHtml}</div>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;background-color:#f8fafc;border:1px dashed #cbd5e1;border-radius:12px;">
                 <tr>
@@ -3055,7 +3078,7 @@
               <h2 style="margin:0 0 18px 0;font-family:Arial,Helvetica,sans-serif;font-size:19px;font-weight:bold;color:#0f172a;letter-spacing:-0.2px;">${tituloHtml}</h2>
               <p style="margin:0 0 14px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#1e293b;">${saludoHtml}</p>
               ${introHtml}
-              ${tableMinimalista}
+              ${tableMinimalista}${bloquesCondInner}
               <div style="margin-top:16px;">${cierreHtml}</div>
               <div style="margin-top:28px;padding-top:14px;border-top:1px solid #f1f5f9;font-family:Arial,Helvetica,sans-serif;">
                 <div style="font-size:14px;font-weight:bold;color:#0f172a;">{{nombre_agente}}</div>
@@ -3089,6 +3112,12 @@
       regularizaciones_faltantes: isHtmlContext
         ? "• Firma de solicitud de seguro<br />• Comprobante de pago inicial ($145.00)"
         : "• Firma de solicitud de seguro\n• Comprobante de pago inicial ($145.00)",
+      tabla_formas_pago: isHtmlContext
+        ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #CBD5E1;border-radius:8px;overflow:hidden;margin:8px 0;font-size:12.5px;"><tr style="background:#1B4F8C;color:#FFFFFF;"><td colspan="2" style="padding:8px 10px;font-weight:600;">Prima total anual</td><td align="right" style="padding:8px 10px;font-weight:700;">$600,00</td></tr><tr style="background:#F1F5F9;font-size:10.5px;font-weight:700;color:#475569;"><td style="padding:5px 10px;">FORMA DE PAGO</td><td align="center" style="padding:5px 10px;">CUOTAS</td><td align="right" style="padding:5px 10px;">VALOR</td></tr><tr><td style="padding:6px 10px;border-bottom:1px solid #E2E8F0;">Contado</td><td align="center" style="padding:6px 10px;border-bottom:1px solid #E2E8F0;">1</td><td align="right" style="padding:6px 10px;border-bottom:1px solid #E2E8F0;font-weight:700;">$600,00</td></tr><tr><td style="padding:6px 10px;border-bottom:1px solid #E2E8F0;">Débito bancario</td><td align="center" style="padding:6px 10px;border-bottom:1px solid #E2E8F0;">12</td><td align="right" style="padding:6px 10px;border-bottom:1px solid #E2E8F0;font-weight:700;">$50,00</td></tr><tr><td style="padding:6px 10px;">Tarjeta de crédito</td><td align="center" style="padding:6px 10px;">6</td><td align="right" style="padding:6px 10px;font-weight:700;">$100,00</td></tr></table>`
+        : "*Opciones de pago (Prima anual: $600,00):*\n• Contado: 1 cuota(s) de $600,00\n• Débito bancario: 12 cuota(s) de $50,00\n• Tarjeta de crédito: 6 cuota(s) de $100,00",
+      boton_confirmacion: isHtmlContext
+        ? `<div style="border:1.5px solid #1B4F8C;border-radius:10px;padding:12px;text-align:center;margin:8px 0;"><div style="font-size:13.5px;font-weight:700;color:#1B4F8C;margin-bottom:8px;">Confirmación de renovación</div><a href="#" onclick="return false;" style="display:block;background:#229954;color:#FFFFFF;text-decoration:none;font-weight:700;font-size:13px;padding:9px 14px;border-radius:6px;margin-bottom:6px;">&#10003; SÍ, RENOVAR MI PÓLIZA</a><a href="#" onclick="return false;" style="display:block;background:#FFFFFF;color:#1B4F8C;border:1.5px solid #1B4F8C;text-decoration:none;font-weight:700;font-size:12px;padding:8px 14px;border-radius:6px;">Tengo dudas, que me contacte mi asesor</a></div>`
+        : "Por favor confírmenos su renovación.\n📧 Le enviamos el detalle completo y las opciones de confirmación a su correo: *cliente@ejemplo.com*",
       logo: CLIENTE_LOGO_URL
         ? `<img src="${escapeHtml(CLIENTE_LOGO_URL)}" alt="Logo" style="max-height:58px;max-width:200px;object-fit:contain;display:inline-block;" />`
         : `<strong>${escapeHtml(CLIENTE_NOMBRE_EMPRESA || "Seguros Alianza")}</strong>`
@@ -3157,7 +3186,16 @@
 
     emSelectedPresetId = st.presetId || "clasica";
     emPrimaryColor = st.primaryColor || "#1e3a8a";
-    emDesignerMode = st.mode || "preset";
+    emDesignerMode = codigo === "condiciones_renovacion" ? "preset" : (st.mode || "preset");
+    if (codigo === "condiciones_renovacion") {
+      st.mode = "preset";
+    }
+    const btnIA = document.getElementById("btnTabModoIA");
+    if (btnIA) {
+      const ocultarIA = codigo === "condiciones_renovacion";
+      btnIA.classList.toggle("d-none", ocultarIA);
+      btnIA.classList.toggle("d-flex", !ocultarIA);
+    }
 
     const asuEl = document.getElementById("emDesignerAsunto");
     const titEl = document.getElementById("emFieldTitulo");
@@ -3190,7 +3228,7 @@
   }
 
   function cambiarModoDisenadorEmail(modo, skipSaveState = false) {
-    emDesignerMode = modo === "ai" ? "ai" : "preset";
+    emDesignerMode = (emSelectedNotifCode === "condiciones_renovacion") ? "preset" : (modo === "ai" ? "ai" : "preset");
     const st = emStateByNotif[emSelectedNotifCode];
     if (st && !skipSaveState) {
       // Si el usuario tiene Plan Prime, el tab IA muestra el bloqueo de upgrade pero no cambia el HTML base
@@ -3745,6 +3783,7 @@
     const replaced = replaceVariablesForLivePreview(raw, waPreviewUseDummyData, false);
     let htmlOut = escapeHtml(replaced)
       .replace(/\*([^*]+)\*/g, "<strong>$1</strong>")
+      .replace(/(https?:\/\/[^\s<]+)/g, '<span style="color:#0284c7;text-decoration:underline;">$1</span>')
       .replace(/\n/g, "<br>");
     if (!waPreviewUseDummyData) {
       htmlOut = htmlOut.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, '<span style="background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:4px;padding:0 4px;font-family:monospace;font-size:12px;font-weight:bold;">{{$1}}</span>');
@@ -3844,6 +3883,8 @@
       out = out.replace(re, v.ejemplo);
     }
     out = out.replace(/\{regularizaciones_faltantes\}/g, "• Firma de contrato\n• Pago de cuota inicial");
+    out = out.replace(/\{\{?\s*tabla_formas_pago\s*\}?\}/g, "*Opciones de pago (Prima anual: $600,00):*\n• Contado: 1 cuota(s) de $600,00\n• Débito bancario: 12 cuota(s) de $50,00\n• Tarjeta de crédito: 6 cuota(s) de $100,00");
+    out = out.replace(/\{\{?\s*boton_confirmacion\s*\}?\}/g, "Por favor confírmenos su renovación.\n📧 Le enviamos el detalle completo y las opciones de confirmación a su correo: *cliente@ejemplo.com*");
     if (permitirLogo) {
       const logoHtml = buildLogoPreviewHtml();
       if (esHtml) {
@@ -4122,6 +4163,10 @@
     if (pdfBadge) {
       pdfBadge.style.display = NOTIF_CON_PDF.has(codigo) ? "block" : "none";
     }
+    const tipoGroup = document.getElementById("pruebaTipoPlantillaGroup");
+    if (tipoGroup) {
+      tipoGroup.style.display = codigo === "condiciones_renovacion" ? "block" : "none";
+    }
 
     const modalEl = document.getElementById("modalProbarNotificacion");
     const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
@@ -4166,7 +4211,8 @@
           destino: destino,
           asunto: asuntoPayload,
           mensaje: mensajePayload,
-          es_html: esHtmlVal
+          es_html: esHtmlVal,
+          tipo_plantilla: document.getElementById("pruebaNotifTipoPlantilla")?.value || "B"
         })
       });
       const json = await resp.json();
